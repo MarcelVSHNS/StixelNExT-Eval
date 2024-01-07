@@ -1,65 +1,65 @@
 import wandb
 import yaml
-import time
+import os
 import numpy as np
-from metrics.PrecisionRecall import evaluate_stixels, plot_precision_recall_curve, draw_stixel_on_image_prcurve
+from metrics.PrecisionRecall import PrecisionRecall
+from dataloader import StixelNExTLoader as Dataloader
 
-# TODO: just apply metrics and scores for wandb
 with open('config.yaml') as yamlfile:
     config = yaml.load(yamlfile, Loader=yaml.FullLoader)
 
 
 def main():
-    # Create an export of analysed data incl. samples and ROC curve
+    test_dataloader = Dataloader(prediction_file=config['result_file'],
+                                 target_folder=config['test_files'])
+
+    # Create an export of analysed data
     if config['logging']['activate']:
         # Init the logger
         # e.g. StixelNExT_ancient-silence-25_epoch-94_loss-0.09816327691078186.pth
-        epochs = config['weights_file'].split('_')[2].split('-')[1]
-        checkpoint = config['weights_file'].split('_')[1]
+        run = os.path.splitext(os.path.basename(config['result_file']))[0]
+        epochs = run.split('_')[2].split('-')[1]
+        checkpoint = run.split('_')[1]
+        dataset = os.path.basename(config['test_files'])
         wandb_logger = wandb.init(project=config['logging']['project'],
                                   config={
-                                      "architecture": type(model).__name__,
-                                      "dataset": testing_data.name,
-                                      "checkpoint": checkpoint,
-                                      "epochs": epochs
+                                      "run": run,
+                                      "dataset": os.path.basename(config['test_files']),
+                                      "checkpoint": run.split('_')[1],
+                                      "epochs": run.split('_')[2].split('-')[1]
                                   },
                                   tags=["metrics", "testing"]
                                   )
 
-        stixel_reader = StixelNExTInterpreter(detection_threshold=config['pred_threshold'],
-                                              hysteresis_threshold=config['pred_threshold'] - 0.05)
-        thresholds = np.linspace(0.1, 1.0, num=10)
-        prec_ious = []
-        recall_ious = []
+        thresholds = np.linspace(0.1, 1.0, num=config['num_thresholds'])
+        # A list with all average prec. and recall by IoU
+        precision_by_iou = []
+        recall_by_iou = []
+        f1_score_by_iou = []
         for iou in thresholds:
-            prec_batches = []
-            recall_batches = []
-            for batch_idx, (samples, targets, images) in enumerate(testing_dataloader):
-                # TODO: use loaded data
-                samples = samples.to(device)
-                start = time.process_time_ns()
-                output = model(samples)
-                t_infer = time.process_time_ns() - start
-                # fetch data from GPU
-                output = output.cpu().detach()
-                prec_samples = []
-                recall_samples = []
-                for i in range(output.shape[0]):
-                    target_stixel = stixel_reader.extract_stixel_from_prediction(targets[i])
-                    prediction_stixel = stixel_reader.extract_stixel_from_prediction(output[i])
-                    precision, recall, best_matches = evaluate_stixels(prediction_stixel, target_stixel, iou_threshold=iou)
-                    prec_samples.append(precision)
-                    recall_samples.append(recall)
-                prec_batches.append(sum(prec_samples)/ len(prec_samples))
-                recall_batches.append(sum(recall_samples)/ len(recall_samples))
+            metric = PrecisionRecall(iou_threshold=iou)
+            # A list with precision and recall per sample of testdata
+            precision_by_testdata = []
+            recall_by_testdata = []
+            f1_score_by_testdata = []
+            for predictions, targets in test_dataloader:
+                # iterate over all samples
+                precision, recall = metric.evaluate(predictions, targets)
+                precision_by_testdata.append(precision)
+                recall_by_testdata.append(recall)
+                f1_score = metric.get_score()
+                f1_score_by_testdata.append(f1_score)
+            # calculate average over all samples and append to IoU list
+            precision_by_iou.append(sum(precision_by_testdata) / len(precision_by_testdata))
+            recall_by_iou.append(sum(recall_by_testdata) / len(recall_by_testdata))
+            f1_score_by_iou.append(sum(f1_score_by_testdata) / len(f1_score_by_testdata))
 
-            prec_ious.append(sum(prec_batches)/ len(prec_batches))
-            recall_ious.append(sum(recall_batches) / len(recall_batches))
-        f1_scores = [2 * p * r / (p + r) if (p + r) != 0 else 0 for p, r in zip(prec_ious, recall_ious)]
-        data = [[x, y] for (x, y) in zip(recall_ious, prec_ious)]
+        data = [[x, y] for (x, y) in zip(recall_by_iou, precision_by_iou)]
         table = wandb.Table(data=data, columns=["Recall", "Precision"])
         wandb_logger.log({"PR curve": wandb.plot.line(table, "Recall", "Precision",
-                                                       title=f"Precision-Recall over {testing_data.__len__()} samples")})
-        wandb_logger.log({"F1": sum(f1_scores)/ len(f1_scores)})
+                                                      title=f"Precision-Recall over {len(test_dataloader)} samples")})
+        wandb_logger.log({"F1": sum(f1_score_by_iou) / len(f1_score_by_iou)})
+
+
 if __name__ == '__main__':
     main()

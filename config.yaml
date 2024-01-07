@@ -1,0 +1,7 @@
+test_files: C:\Users\marce\Documents\StixelNExT\dataset\kitti
+result_file: C:\Users\marce\Documents\StixelNExT\results\StixelNExT_amber-brook-91_epoch-1_loss-0.1659790277481079.pkl
+logging:
+  activate: False
+  project: Stixel-Multicut
+grid_step: 4
+num_thresholds: 10 # from 0 to 1 pr-curve e.g. its IoU

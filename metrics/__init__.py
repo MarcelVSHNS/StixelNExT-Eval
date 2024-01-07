@@ -1,1 +1,1 @@
-from .names import Stixel
+from .Metric import Stixel, EvaluationMetric
