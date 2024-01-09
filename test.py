@@ -23,9 +23,9 @@ def main():
         dataset = os.path.basename(config['test_files'])
         wandb_logger = wandb.init(project=config['logging']['project'],
                                   config={
-                                      "run": run,
+                                      "run": run.split('_')[1],
                                       "dataset": os.path.basename(config['test_files']),
-                                      "checkpoint": run.split('_')[1],
+                                      "checkpoint": run,
                                       "epochs": run.split('_')[2].split('-')[1]
                                   },
                                   tags=["metrics", "testing"]
