@@ -3,7 +3,7 @@ from dataloader.EvaluationDataloader import EvaluationDataloader, read_stixel_fr
 
 
 class StixelNExTLoader(EvaluationDataloader):
-    def __init__(self, prediction_file, target_folder):
+    def __init__(self, prediction_folder, target_folder):
         super().__init__(target_folder)
         for target_file in os.listdir(target_folder):
             self.predictions.append(read_stixel_from_csv(target_file))

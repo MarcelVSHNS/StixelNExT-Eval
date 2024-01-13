@@ -55,6 +55,8 @@ class PrecisionRecall(EvaluationMetric):
 
     # 2.1 Implement get_score()
     def get_score(self):
+        if self.precision + self.recall == 0:
+            return 0
         f1_score = 2 * self.precision * self.recall / (self.precision + self.recall)
         return f1_score
 

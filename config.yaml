@@ -1,7 +1,8 @@
-test_files: C:\Users\marce\Documents\StixelNExT\dataset\kitti
-result_file: C:\Users\marce\Documents\StixelNExT\results\StixelNExT_amber-brook-91_epoch-1_loss-0.1659790277481079.pkl
+prediction_folder: /home/marcel/workspace/datasets/ameise/testing/predictions_from_StixelNExT/StixelNExT_rose-energy-117_epoch-12_test-error-0.19930797815322876
+# StixelNExT: /home/marcel/workspace/datasets/ameise/testing/predictions_from_StixelNExT/StixelNExT_rose-energy-117_epoch-12_test-error-0.19930797815322876
+# /home/marcel/workspace/datasets/ameise/testing/predictions_from_stereo
+num_thresholds: 10    # from 0 to 1, for pr-curve e.g. it is the IoU
+dataset: ameise       # logging info
 logging:
-  activate: False
+  activate: True
   project: Stixel-Multicut
-grid_step: 4
-num_thresholds: 10 # from 0 to 1 pr-curve e.g. its IoU
