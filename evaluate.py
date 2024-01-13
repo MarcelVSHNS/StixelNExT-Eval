@@ -3,7 +3,7 @@ import yaml
 import os
 import numpy as np
 from metrics.PrecisionRecall import PrecisionRecall
-from dataloader import EvaluationDataloader as Dataloader
+from resultloader import StixelNExTLoader as Dataloader
 from datetime import datetime
 
 with open('config.yaml') as yamlfile:
@@ -12,7 +12,7 @@ overall_start_time = datetime.now()
 
 
 def main():
-    test_dataloader = Dataloader(prediction_folder=config['prediction_folder'])
+    test_dataloader = Dataloader()
 
     # Create an export of analysed data
     if config['logging']['activate']:

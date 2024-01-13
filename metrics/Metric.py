@@ -6,22 +6,16 @@ with open('config.yaml') as yamlfile:
 
 
 class Stixel:
-    def __init__(self, x: int, y_t: int, y_b: int, depth: float = 8.0, sem_class: int = -1):
+    def __init__(self, x: int, y_t: int, y_b: int, depth: float = 42.0, sem_class: int = -1):
         self.column: int = x
         self.top: int = y_t
         self.bottom: int = y_b
         self.depth: float = depth
         self.semantic_class: int = sem_class
-
-        self.grid_step: int = 8
+        self.grid_step: int = config['grid_step']
 
     def __repr__(self):
         return f"{self.column},{self.top},{self.bottom},{self.depth}"
-
-    def scale_by_grid(self):
-        self.column = self.column * self.grid_step
-        self.top = self.top * self.grid_step
-        self.bottom = self.bottom * self.grid_step
 
     def check_integrity(self):
         # Optional: add checks like bottom is always higher than top, x-y-coordinate system, ...
