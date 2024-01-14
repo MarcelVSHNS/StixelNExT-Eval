@@ -1,32 +1,35 @@
 import wandb
 import yaml
+with open('config.yaml') as yamlfile:
+    config = yaml.load(yamlfile, Loader=yaml.FullLoader)
 import os
 import numpy as np
 from metrics.PrecisionRecall import PrecisionRecall
-from resultloader import StixelNExTLoader as Dataloader
 from datetime import datetime
+if config['evaluation']['model'] == "Stereo":
+    from resultloader import StereoStixelLoader as Dataloader
+elif config['evaluation']['model'] == "StixelNExT":
+    from resultloader import StixelNExTLoader as Dataloader
 
-with open('config.yaml') as yamlfile:
-    config = yaml.load(yamlfile, Loader=yaml.FullLoader)
 overall_start_time = datetime.now()
 
 
 def main():
     test_data_generator = Dataloader()
     metric = PrecisionRecall(iou_threshold=config['evaluation']['iou'])
-
+    pred, targ = test_data_generator[4]
     # Create an export of analysed data
     if config['logging']['activate']:
         # Init the logger
         # e.g. StixelNExT_ancient-silence-25_epoch-94_loss-0.09816327691078186.pth predictions_from_stereo
-        run = os.path.basename(config['prediction_folder'])
-        if config['prediction_folder'].split("/")[-1] == "predictions_from_stereo":
+        run = config['weights_file']
+        if config['evaluation']['model'] == "Stereo":
             run = "Stereo"
             checkpoint = "-"
             epochs = "-"
         else:
             run_logger = run.split('_')[1]
-            checkpoint = run
+            checkpoint, _ = os.path.splitext(run)
             epochs = run.split('_')[2].split('-')[1]
 
         wandb_logger = wandb.init(project=config['logging']['project'],
@@ -40,7 +43,7 @@ def main():
                                   )
 
         # overwrite of pred_threshold
-        thresholds = np.linspace(0.1, 1.0, num=config['num_thresholds'])
+        thresholds = np.linspace(0.1, 1.0, num=config['evaluation']['num_thresholds'])
         # A list with all average prec. and recall by IoU
         precision_by_iou = []
         recall_by_iou = []

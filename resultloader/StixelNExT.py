@@ -3,10 +3,9 @@ import yaml
 with open('config.yaml') as yamlfile:
     config = yaml.load(yamlfile, Loader=yaml.FullLoader)
 
-from resultloader import EvaluationDataloader, read_stixel_from_csv
+from resultloader.EvaluationDataloader import EvaluationDataloader, read_stixel_from_csv
 from dataloader.stixel_multicut import MultiCutStixelData
 from dataloader.stixel_multicut_interpreter import StixelNExTInterpreter
-from torch.utils.data import DataLoader
 from models.ConvNeXt import ConvNeXt
 import torch
 import os
@@ -21,46 +20,57 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 class StixelNExTLoader(EvaluationDataloader):
     def __init__(self):
         # Targets
-        dataset_dir = os.path.join(config['data_path'], config['dataset'])
-        super().__init__(os.path.join(dataset_dir, "testing", "targets_from_lidar"))
-        # Test dataloader
-        self.testing_data = MultiCutStixelData(data_dir=dataset_dir,
-                                               phase='testing',
-                                               transform=feature_transform,
-                                               target_transform=None,
-                                               return_name=True)
-        # Model
-        self.model = ConvNeXt(stem_features=config['nn']['stem_features'],
-                              depths=config['nn']['depths'],
-                              widths=config['nn']['widths'],
-                              drop_p=config['nn']['drop_p'],
-                              target_height=int(self.testing_data.img_size['height'] / config['grid_step']),
-                              target_width=int(self.testing_data.img_size['width'] / config['grid_step']),
-                              out_channels=2).to(device)
-        # Load weights
-        self.weights_file = config['weights_file']
-        self.checkpoint = os.path.splitext(self.weights_file)[0]  # checkpoint without ending
-        self.run = self.checkpoint.split('_')[1]
-        self.model.load_state_dict(torch.load(os.path.join(dataset_dir, "testing", "weights_from_StixelNExT", self.weights_file)))
+        self.dataset_dir = os.path.join(config['data_path'], config['dataset'])
+        super().__init__(os.path.join(self.dataset_dir, "testing", "targets_from_lidar"))
+        self.prediction_list = []
+        self._create_predictions()
         # Stixel Interpreter
         self.stixel_reader = StixelNExTInterpreter()
         # Check-ups
-        if len(self.testing_data) != len(self.target_list):
-            print(f"INFO: Inconsistent number of predictions[{len(self.testing_data)}] and targets[{len(self.target_list)}]")
+        if len(self.prediction_list) != len(self.target_list):
+            print(f"INFO: Inconsistent number of predictions[{len(self.prediction_list)}] and targets[{len(self.target_list)}]")
 
     def __getitem__(self, idx):
-        sample, target, filename = self.testing_data[idx]
-        sample = sample.to(device)
-        output = self.model(sample)
-        # fetch data from GPU
-        output = output.cpu().detach()
-        pred_stx = self.stixel_reader.extract_stixel_from_prediction(output)
-        targ_stx = read_stixel_from_csv(os.path.join(self.target_folder, filename))
+        pred_stx = self.stixel_reader.extract_stixel_from_prediction(self.prediction_list[idx]['prediction'])
+        targ_stx = read_stixel_from_csv(os.path.join(self.target_folder, self.prediction_list[idx]['filename'] + ".csv"))
         return pred_stx, targ_stx
 
     def __len__(self):
-        return len(self.testing_data)
+        return len(self.prediction_list)
 
     def set_threshold(self, threshold, hysteresis=0.05):
         self.stixel_reader.s1 = threshold
         self.stixel_reader.s2 = threshold - hysteresis
+
+    def _create_predictions(self):
+        # Test dataloader
+        testing_data = MultiCutStixelData(data_dir=self.dataset_dir,
+                                          phase='testing',
+                                          transform=feature_transform,
+                                          target_transform=None,
+                                          return_name=True)
+        # Model
+        model = ConvNeXt(stem_features=config['nn']['stem_features'],
+                         depths=config['nn']['depths'],
+                         widths=config['nn']['widths'],
+                         drop_p=config['nn']['drop_p'],
+                         target_height=int(testing_data.img_size['height'] / config['grid_step']),
+                         target_width=int(testing_data.img_size['width'] / config['grid_step']),
+                         out_channels=2).to(device)
+        # Load weights
+        weights_file = config['weights_file']
+        checkpoint = os.path.splitext(weights_file)[0]  # checkpoint without ending
+        run = checkpoint.split('_')[1]
+        model.load_state_dict(
+            torch.load(f=os.path.join(self.dataset_dir, "testing", "weights_from_StixelNExT", weights_file),
+                       map_location=torch.device(device)))
+
+        for idx in range(len(testing_data)):
+            sample, target, name = testing_data[idx]
+            sample = sample.unsqueeze(0)
+            sample = sample.to(device)
+            output = model(sample)
+            # fetch data from GPU
+            output = output.cpu().detach()
+            self.prediction_list.append({"filename": name, "prediction": output})
+        print(f"Predictions with Checkpoint {weights_file} created!")

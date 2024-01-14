@@ -1,12 +1,14 @@
 import os
-from resultloader import EvaluationDataloader, read_stixel_from_csv
+from resultloader.EvaluationDataloader import EvaluationDataloader, read_stixel_from_csv
+import yaml
+with open('config.yaml') as yamlfile:
+    config = yaml.load(yamlfile, Loader=yaml.FullLoader)
 
 
 class StereoStixelLoader(EvaluationDataloader):
-    def __init__(self, prediction_folder):
-        self.prediction_folder = prediction_folder
-        base_path = prediction_folder.split("/")[:-1]
-        super().__init__(os.path.join("/".join(base_path), "targets_from_lidar"))
+    def __init__(self):
+        self.prediction_folder = os.path.join(config['data_path'], config['dataset'], 'testing', 'calculations_from_Stereo')
+        super().__init__(os.path.join(os.path.dirname(self.prediction_folder), "targets_from_lidar"))
         self.prediction_list = [pred for pred in os.listdir(self.prediction_folder) if pred.endswith(".csv")]
         if len(self.prediction_list) != len(self.target_list):
             print(f"INFO: Inconsistent number of predictions[{len(self.prediction_list)}] and targets[{len(self.target_list)}]")

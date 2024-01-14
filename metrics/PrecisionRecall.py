@@ -61,18 +61,17 @@ class PrecisionRecall(EvaluationMetric):
         return f1_score
 
     def find_best_matches(self, predicted_stixels: List[Stixel], ground_truth_stixels: List[Stixel]):
-        best_matches = {}  # Store the best match for each ground truth Stixel
-        hits: int = 0
+        best_matches = {}
+        used_pred_stixels = set()
         for gt_stixel in ground_truth_stixels:
             for pred_stixel in predicted_stixels:
-                if pred_stixel.column == gt_stixel.column:
+                if pred_stixel.column == gt_stixel.column and pred_stixel not in used_pred_stixels:
                     iou_score: float = calculate_stixel_iou(pred_stixel, gt_stixel)
-
-                    # Update the best match if a better one is found
                     if iou_score >= self.iou_threshold and (
                             gt_stixel not in best_matches or iou_score > best_matches[gt_stixel]['iou']):
                         best_matches[gt_stixel] = {'pred_stixel': pred_stixel, 'iou': iou_score,
                                                    'target_stixel': gt_stixel}
+                        used_pred_stixels.add(pred_stixel)
         return best_matches
 
 
