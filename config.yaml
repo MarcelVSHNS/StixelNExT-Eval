@@ -28,6 +28,9 @@ nn:
   - 768
 num_epochs: 40
 pred_threshold: 0.4
+evaluation:
+  iou: 0.5
+  num_threshold: 10
 resources:
   test_worker: 2
   train_worker: 4

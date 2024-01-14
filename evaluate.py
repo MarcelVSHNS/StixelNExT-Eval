@@ -12,7 +12,8 @@ overall_start_time = datetime.now()
 
 
 def main():
-    test_dataloader = Dataloader()
+    test_data_generator = Dataloader()
+    metric = PrecisionRecall(iou_threshold=config['evaluation']['iou'])
 
     # Create an export of analysed data
     if config['logging']['activate']:
@@ -38,21 +39,22 @@ def main():
                                   tags=["metrics", "testing"]
                                   )
 
+        # overwrite of pred_threshold
         thresholds = np.linspace(0.1, 1.0, num=config['num_thresholds'])
         # A list with all average prec. and recall by IoU
         precision_by_iou = []
         recall_by_iou = []
         f1_score_by_iou = []
-        for iou in thresholds:
-            print(f"Evaluating threshold: {iou} ...")
-            metric = PrecisionRecall(iou_threshold=iou)
+        for threshold in thresholds:
+            print(f"Evaluating threshold: {threshold} ...")
+            test_data_generator.set_threshold(threshold)
             # A list with precision and recall per sample of testdata
             precision_by_testdata = []
             recall_by_testdata = []
             f1_score_by_testdata = []
-            for i in range(len(test_dataloader)):
+            for i in range(len(test_data_generator)):
                 try:
-                    prediction, target = test_dataloader[i]
+                    prediction, target = test_data_generator[i]
                 except FileNotFoundError as e:
                     continue
                 # iterate over all samples
@@ -61,23 +63,23 @@ def main():
                 recall_by_testdata.append(recall)
                 f1_score = metric.get_score()
                 f1_score_by_testdata.append(f1_score)
-            iou_avg_prec = sum(precision_by_testdata) / len(precision_by_testdata)
-            iou_avg_rec = sum(recall_by_testdata) / len(recall_by_testdata)
-            iou_avg_f1 = sum(f1_score_by_testdata) / len(f1_score_by_testdata)
-            print(f"... Precision: {iou_avg_prec}")
-            print(f"... Recall: {iou_avg_rec}")
-            print(f"... F1 Score: {iou_avg_f1}")
+            avg_prec = sum(precision_by_testdata) / len(precision_by_testdata)
+            avg_rec = sum(recall_by_testdata) / len(recall_by_testdata)
+            avg_f1 = sum(f1_score_by_testdata) / len(f1_score_by_testdata)
+            print(f"... Precision: {avg_prec}")
+            print(f"... Recall: {avg_rec}")
+            print(f"... F1 Score: {avg_f1}")
             # calculate average over all samples and append to IoU list
-            precision_by_iou.append(iou_avg_prec)
-            recall_by_iou.append(iou_avg_rec)
-            f1_score_by_iou.append(iou_avg_f1)
+            precision_by_iou.append(avg_prec)
+            recall_by_iou.append(avg_rec)
+            f1_score_by_iou.append(avg_f1)
             step_time = datetime.now() - overall_start_time
             print("Time elapsed: {}".format(step_time))
 
         data = [[x, y] for (x, y) in zip(recall_by_iou, precision_by_iou)]
         table = wandb.Table(data=data, columns=["Recall", "Precision"])
         wandb_logger.log({"PR curve": wandb.plot.line(table, "Recall", "Precision",
-                                                      title=f"Precision-Recall over {len(test_dataloader)} samples")})
+                                                      title=f"Precision-Recall over {len(test_data_generator)} samples")})
         wandb_logger.log({"F1": sum(f1_score_by_iou) / len(f1_score_by_iou)})
 
 

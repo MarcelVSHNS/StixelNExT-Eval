@@ -53,9 +53,14 @@ class StixelNExTLoader(EvaluationDataloader):
         sample = sample.to(device)
         output = self.model(sample)
         # fetch data from GPU
-        pred_stx = output.cpu().detach()
+        output = output.cpu().detach()
+        pred_stx = self.stixel_reader.extract_stixel_from_prediction(output)
         targ_stx = read_stixel_from_csv(os.path.join(self.target_folder, filename))
         return pred_stx, targ_stx
 
     def __len__(self):
         return len(self.testing_data)
+
+    def set_threshold(self, threshold, hysteresis=0.05):
+        self.stixel_reader.s1 = threshold
+        self.stixel_reader.s2 = threshold - hysteresis
