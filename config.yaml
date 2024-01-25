@@ -2,7 +2,7 @@ batch_size: 2
 data_path: /home/marcel/workspace/datasets
 # /home/marcel/workspace/datasets
 # C:\Users\marce\Documents\datasets
-dataset: ameise
+dataset: kitti
 explore_data: false
 grid_step: 8
 img_height: null

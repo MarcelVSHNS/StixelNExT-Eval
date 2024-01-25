@@ -12,7 +12,7 @@ overall_start_time = datetime.now()
 
 def main():
     test_data_generator = Dataloader()
-    metric = PrecisionRecall(iou_threshold=config['evaluation']['iou'], rm_used=False)
+    metric = PrecisionRecall(iou_threshold=config['evaluation']['iou'], rm_used=True)
     # Create an export of analysed data
     if config['logging']['activate']:
         run_logger = "Stereo"
@@ -26,7 +26,7 @@ def main():
                                       "checkpoint": checkpoint,
                                       "epochs": epochs
                                   },
-                                  tags=["metrics", "testing"]
+                                  tags=["metrics", "stereo"]
                                   )
 
         # A list with precision and recall per sample of testdata
