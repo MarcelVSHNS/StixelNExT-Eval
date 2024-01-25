@@ -4,12 +4,9 @@ with open('config.yaml') as yamlfile:
     config = yaml.load(yamlfile, Loader=yaml.FullLoader)
 import os
 import numpy as np
-from metrics.PrecisionRecall import PrecisionRecall, draw_stixel_on_image_prcurve
+from metrics.PrecisionRecall import PrecisionRecall
 from datetime import datetime
-if config['evaluation']['model'] == "Stereo":
-    from resultloader import StereoStixelLoader as Dataloader
-elif config['evaluation']['model'] == "StixelNExT":
-    from resultloader import StixelNExTLoader as Dataloader
+from resultloader import StixelNExTLoader as Dataloader
 
 overall_start_time = datetime.now()
 
