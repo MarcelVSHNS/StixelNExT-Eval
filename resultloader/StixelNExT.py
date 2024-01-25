@@ -13,17 +13,8 @@ if config['dataset'] == "kitti":
     from dataloader.stixel_multicut import feature_transform_resize as feature_transform
 else:
     feature_transform = None
-
+from metrics.ObstacleDetection import get_obstacles_only
 device = "cuda" if torch.cuda.is_available() else "cpu"
-
-
-def _get_obstacles_only(stixels):
-    max_bottom_stixels = {}
-    for stixel in stixels:
-        column = stixel.column
-        if column not in max_bottom_stixels or stixel.bottom > max_bottom_stixels[column].bottom:
-            max_bottom_stixels[column] = stixel
-    return list(max_bottom_stixels.values())
 
 
 class StixelNExTLoader(EvaluationDataloader):
@@ -50,8 +41,7 @@ class StixelNExTLoader(EvaluationDataloader):
     def __getitem__(self, idx):
         pred_stx = self.stixel_reader.extract_stixel_from_prediction(self.prediction_list[idx]['prediction'], detection_threshold=self.current_threshold)
         if self.obstacle_detection_mode:
-            pred_stx = _get_obstacles_only(pred_stx)
-            print("obs_mode")
+            pred_stx = get_obstacles_only(pred_stx)
         targ_stx = read_stixel_from_csv(os.path.join(self.target_folder, self.prediction_list[idx]['filename'] + ".csv"))
         if self.exploring:
             return pred_stx, targ_stx, self.prediction_list[idx]['image']

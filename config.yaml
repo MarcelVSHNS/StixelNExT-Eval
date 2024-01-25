@@ -1,8 +1,8 @@
 batch_size: 2
-data_path: /home/marcel/workspace/datasets
+data_path: /media/marcel/Data1/Datasets/
 # /home/marcel/workspace/datasets
 # C:\Users\marce\Documents\datasets
-dataset: kitti
+dataset: cityscapes/StixelNet
 explore_data: false
 grid_step: 8
 img_height: null
@@ -11,7 +11,7 @@ inspect_model: true
 learning_rate: 0.001
 load_weights: false
 logging:
-  activate: true
+  activate: false
   project: Stixel-Multicut
 loss:
   alpha: 1.0
