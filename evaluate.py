@@ -4,7 +4,7 @@ with open('config.yaml') as yamlfile:
     config = yaml.load(yamlfile, Loader=yaml.FullLoader)
 import os
 import numpy as np
-from metrics.PrecisionRecall import PrecisionRecall
+from metrics.PrecisionRecall import PrecisionRecall, draw_stixel_on_image_prcurve
 from datetime import datetime
 if config['evaluation']['model'] == "Stereo":
     from resultloader import StereoStixelLoader as Dataloader
@@ -15,9 +15,16 @@ overall_start_time = datetime.now()
 
 
 def main():
-    test_data_generator = Dataloader()
-    metric = PrecisionRecall(iou_threshold=config['evaluation']['iou'])
-    pred, targ = test_data_generator[4]
+    test_data_generator = Dataloader(exploring=config['explore_data'])
+    metric = PrecisionRecall(iou_threshold=config['evaluation']['iou'], rm_used=True)
+    if config['explore_data']:
+        test_data_generator.set_threshold(0.8)
+        pred, targ, image = test_data_generator[4]
+        precision, recall = metric.evaluate(pred, targ)
+        print(f"pred_len: {len(pred)}, targ_len: {len(targ)}")
+        print(f'Precision: {precision}, Recall: {recall}')
+        test_data_generator.stixel_reader.show_stixel(image, stixel_list=targ, color=[0, 255, 0])
+        test_data_generator.stixel_reader.show_stixel(image, stixel_list=pred, color=[255, 0, 0])
     # Create an export of analysed data
     if config['logging']['activate']:
         # Init the logger
@@ -44,6 +51,7 @@ def main():
 
         # overwrite of pred_threshold
         thresholds = np.linspace(0.1, 1.0, num=config['evaluation']['num_thresholds'])
+
         # A list with all average prec. and recall by IoU
         precision_by_iou = []
         recall_by_iou = []
@@ -55,9 +63,12 @@ def main():
             precision_by_testdata = []
             recall_by_testdata = []
             f1_score_by_testdata = []
-            for i in range(len(test_data_generator)):
+            for sample in test_data_generator:
                 try:
-                    prediction, target = test_data_generator[i]
+                    if config['explore_data']:
+                        prediction, target, _ = sample
+                    else:
+                        prediction, target = sample
                 except FileNotFoundError as e:
                     continue
                 # iterate over all samples

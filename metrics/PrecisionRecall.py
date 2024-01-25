@@ -7,30 +7,20 @@ from typing import List
 
 
 def calculate_stixel_iou(pred: Stixel, target: Stixel):
-    """
-    Calculate the IoU for two Stixel objects.
-    """
-    intersection: float = 0.0
-    union: int = abs(target.top - target.bottom)
-    # check if pred overlaps at minimum
-    if (target.top <= pred.top <= target.bottom or
-            target.top <= pred.bottom <= target.bottom):
-        # check if it starts before or after
-        if pred.top <= target.top:
-            intersection: int = abs(target.top - pred.bottom) if pred.top < target.top else abs(pred.top - pred.bottom)
-            case = 1  # debugging
-        # if stixel is below target, remember: row is increasing downwards. pred = 200, target = 400
-        elif pred.top > target.top:
-            intersection: int = abs(pred.top - target.bottom) if pred.bottom > target.bottom else abs(pred.top - pred.bottom)
-            case = 2  # debugging
-    return intersection / union if union != 0 else 0
+    overlap_start = max(target.top, pred.top)
+    overlap_end = min(target.bottom, pred.bottom)
+    intersection = max(0, overlap_end - overlap_start)
+    union = target.bottom - target.top
+    iou = intersection / union if union != 0 else 0
+    return iou
 
 
 class PrecisionRecall(EvaluationMetric):
     # 1. Implement __init()__
-    def __init__(self, iou_threshold: float = 0.5):
+    def __init__(self, iou_threshold: float = 0.5, rm_used=False):
         super().__init__()
         self.iou_threshold: float = iou_threshold
+        self.rm_used: bool = rm_used
         self.precision: float = 0.0
         self.recall: float = 0.0
 
@@ -41,13 +31,13 @@ class PrecisionRecall(EvaluationMetric):
         """
         total_predicted: int = len(prediction)
         total_ground_truth: int = len(target)
-        best_matches = self.find_best_matches(prediction, target)
-        hits: int = len(best_matches)
+        hits = self.find_best_matches(prediction, target)
         # hits equals True positives (TP)
         # precision = TP / TP + FP
         self.precision = hits / total_predicted if total_predicted != 0 else 0
+        if self.precision > 1.0:
+            self.precision = 1.0
         # len pred equals True positives + False positives (FP)
-
         # recall = TP / TP + FN
         self.recall = hits / total_ground_truth if total_ground_truth != 0 else 0
         # len gt equals True positives + False negatives (FN)
@@ -61,18 +51,25 @@ class PrecisionRecall(EvaluationMetric):
         return f1_score
 
     def find_best_matches(self, predicted_stixels: List[Stixel], ground_truth_stixels: List[Stixel]):
-        best_matches = {}
-        used_pred_stixels = set()
+        hits = 0
+        remaining_pred_stixels = set(predicted_stixels)
+        # iterate over all GT
         for gt_stixel in ground_truth_stixels:
-            for pred_stixel in predicted_stixels:
-                if pred_stixel.column == gt_stixel.column and pred_stixel not in used_pred_stixels:
-                    iou_score: float = calculate_stixel_iou(pred_stixel, gt_stixel)
-                    if iou_score >= self.iou_threshold and (
-                            gt_stixel not in best_matches or iou_score > best_matches[gt_stixel]['iou']):
-                        best_matches[gt_stixel] = {'pred_stixel': pred_stixel, 'iou': iou_score,
-                                                   'target_stixel': gt_stixel}
-                        used_pred_stixels.add(pred_stixel)
-        return best_matches
+            matched_pred = None
+            # iterate over all predictions
+            for pred_stixel in remaining_pred_stixels:
+                # iterate over all columns
+                if pred_stixel.column == gt_stixel.column:
+                    # if iou score is high enough; count
+                    iou_score = calculate_stixel_iou(pred_stixel, gt_stixel)
+                    if iou_score >= self.iou_threshold:
+                        matched_pred = pred_stixel
+                        hits += 1
+                        break
+            if matched_pred:
+                if self.rm_used:
+                    remaining_pred_stixels.remove(matched_pred)
+        return hits
 
 
 def plot_precision_recall_curve(recall, precision):

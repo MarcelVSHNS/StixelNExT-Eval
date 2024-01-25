@@ -17,30 +17,53 @@ else:
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 
+def _get_obstacles_only(stixels):
+    max_bottom_stixels = {}
+    for stixel in stixels:
+        column = stixel.column
+        if column not in max_bottom_stixels or stixel.bottom > max_bottom_stixels[column].bottom:
+            max_bottom_stixels[column] = stixel
+    return list(max_bottom_stixels.values())
+
+
 class StixelNExTLoader(EvaluationDataloader):
-    def __init__(self):
+    def __init__(self, obstacle_detection_mode=False, exploring=False):
         # Targets
-        self.dataset_dir = os.path.join(config['data_path'], config['dataset'])
+        if obstacle_detection_mode:
+            dataset_snippet = 'cityscapes/ameise'
+        else:
+            dataset_snippet = config['dataset']
+        self.dataset_dir = os.path.join(config['data_path'], dataset_snippet)
         super().__init__(os.path.join(self.dataset_dir, "testing", "targets_from_lidar"))
         self.prediction_list = []
+        self.image_list = []
         self._create_predictions()
         # Stixel Interpreter
         self.stixel_reader = StixelNExTInterpreter()
+        self.current_threshold = 1.0
+        self.obstacle_detection_mode = obstacle_detection_mode
+        self.exploring = exploring
         # Check-ups
         if len(self.prediction_list) != len(self.target_list):
             print(f"INFO: Inconsistent number of predictions[{len(self.prediction_list)}] and targets[{len(self.target_list)}]")
 
     def __getitem__(self, idx):
-        pred_stx = self.stixel_reader.extract_stixel_from_prediction(self.prediction_list[idx]['prediction'])
+        pred_stx = self.stixel_reader.extract_stixel_from_prediction(self.prediction_list[idx]['prediction'], detection_threshold=self.current_threshold)
+        if self.obstacle_detection_mode:
+            pred_stx = _get_obstacles_only(pred_stx)
+            print("obs_mode")
         targ_stx = read_stixel_from_csv(os.path.join(self.target_folder, self.prediction_list[idx]['filename'] + ".csv"))
-        return pred_stx, targ_stx
+        if self.exploring:
+            return pred_stx, targ_stx, self.prediction_list[idx]['image']
+        else:
+            return pred_stx, targ_stx
 
     def __len__(self):
         return len(self.prediction_list)
 
-    def set_threshold(self, threshold, hysteresis=0.05):
-        self.stixel_reader.s1 = threshold
-        self.stixel_reader.s2 = threshold - hysteresis
+    def set_threshold(self, threshold):
+        self.stixel_reader.threshold = threshold
+        self.current_threshold = threshold
 
     def _create_predictions(self):
         # Test dataloader
@@ -48,7 +71,9 @@ class StixelNExTLoader(EvaluationDataloader):
                                           phase='testing',
                                           transform=feature_transform,
                                           target_transform=None,
+                                          return_original_image=True,
                                           return_name=True)
+        print(f"Started creating predictions. This may take a while... ({len(testing_data)} samples)")
         # Model
         model = ConvNeXt(stem_features=config['nn']['stem_features'],
                          depths=config['nn']['depths'],
@@ -66,11 +91,13 @@ class StixelNExTLoader(EvaluationDataloader):
                        map_location=torch.device(device)))
 
         for idx in range(len(testing_data)):
-            sample, target, name = testing_data[idx]
+            sample, target, image, name = testing_data[idx]
             sample = sample.unsqueeze(0)
             sample = sample.to(device)
             output = model(sample)
             # fetch data from GPU
             output = output.cpu().detach()
             self.prediction_list.append({"filename": name, "prediction": output})
+            if (idx+1) % 50 == 0:
+                print(f"Sample {idx + 1} from {len(testing_data)} predicted.")
         print(f"Predictions with Checkpoint {weights_file} created!")
