@@ -31,16 +31,19 @@ class StixelNExTLoader(EvaluationDataloader):
         # Targets
         if obstacle_detection_mode:
             dataset_snippet = 'cityscapes/ameise'
+            targets = "targets_from_lidar"
         else:
             dataset_snippet = config['dataset']
+            targets = "targets_from_lidar"
+            # dataset_snippet = 'cityscapes/ameise'
         self.dataset_dir = os.path.join(config['data_path'], dataset_snippet)
-        super().__init__(os.path.join(self.dataset_dir, "testing", "targets_from_lidar"))
+        super().__init__(os.path.join(self.dataset_dir, "testing", targets))
         self.prediction_list = []
         self.image_list = []
         self._create_predictions()
         # Stixel Interpreter
         self.stixel_reader = StixelNExTInterpreter()
-        self.current_threshold = 1.0
+        self.current_threshold = config['pred_threshold']
         self.obstacle_detection_mode = obstacle_detection_mode
         self.exploring = exploring
         # Check-ups
@@ -51,7 +54,6 @@ class StixelNExTLoader(EvaluationDataloader):
         pred_stx = self.stixel_reader.extract_stixel_from_prediction(self.prediction_list[idx]['prediction'], detection_threshold=self.current_threshold)
         if self.obstacle_detection_mode:
             pred_stx = _get_obstacles_only(pred_stx)
-            print("obs_mode")
         targ_stx = read_stixel_from_csv(os.path.join(self.target_folder, self.prediction_list[idx]['filename'] + ".csv"))
         if self.exploring:
             return pred_stx, targ_stx, self.prediction_list[idx]['image']
@@ -97,7 +99,7 @@ class StixelNExTLoader(EvaluationDataloader):
             output = model(sample)
             # fetch data from GPU
             output = output.cpu().detach()
-            self.prediction_list.append({"filename": name, "prediction": output})
+            self.prediction_list.append({"filename": name, "prediction": output, "image": image})
             if (idx+1) % 50 == 0:
                 print(f"Sample {idx + 1} from {len(testing_data)} predicted.")
         print(f"Predictions with Checkpoint {weights_file} created!")
