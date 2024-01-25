@@ -11,7 +11,7 @@ inspect_model: true
 learning_rate: 0.001
 load_weights: false
 logging:
-  activate: false
+  activate: true
   project: Stixel-Multicut
 loss:
   alpha: 1.0

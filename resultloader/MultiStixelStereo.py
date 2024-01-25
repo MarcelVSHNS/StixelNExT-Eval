@@ -14,7 +14,7 @@ class StereoStixelLoader(EvaluationDataloader):
             dataset_snippet = 'cityscapes/kitti'
         else:
             dataset_snippet = config['dataset']
-        self.prediction_folder = os.path.join(config['data_path'], dataset_snippet, 'testing', 'predictions_from_StixelNet')
+        self.prediction_folder = os.path.join(config['data_path'], dataset_snippet, 'testing', 'calculations_from_stereo')
         super().__init__(os.path.join(os.path.dirname(self.prediction_folder), "targets_from_lidar"))
         self.prediction_list = [pred for pred in os.listdir(self.prediction_folder) if pred.endswith(".csv")]
         self.image_folder = os.path.join(os.path.dirname(self.prediction_folder), "STEREO_LEFT")
@@ -40,6 +40,7 @@ class StereoStixelLoader(EvaluationDataloader):
             img_filename = os.path.splitext(filename)[0] + ".png"
             image = cv2.imread(os.path.join(self.image_folder, img_filename))
             pred_stx = get_obstacles_only(pred_stx)
+            targ_stx = get_obstacles_only(targ_stx)
             return pred_stx, targ_stx, image
         else:
             return pred_stx, targ_stx
