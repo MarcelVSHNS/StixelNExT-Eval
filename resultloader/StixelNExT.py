@@ -30,12 +30,12 @@ class StixelNExTLoader(EvaluationDataloader):
     def __init__(self, obstacle_detection_mode=False, exploring=False):
         # Targets
         if obstacle_detection_mode:
-            dataset_snippet = 'cityscapes/ameise'
+            dataset_snippet = 'cityscapes/kitti'
             targets = "targets_from_lidar"
         else:
             dataset_snippet = config['dataset']
             targets = "targets_from_lidar"
-            # dataset_snippet = 'cityscapes/ameise'
+            #dataset_snippet = 'cityscapes/kitti'
         self.dataset_dir = os.path.join(config['data_path'], dataset_snippet)
         super().__init__(os.path.join(self.dataset_dir, "testing", targets))
         self.prediction_list = []
@@ -46,15 +46,18 @@ class StixelNExTLoader(EvaluationDataloader):
         self.current_threshold = config['pred_threshold']
         self.obstacle_detection_mode = obstacle_detection_mode
         self.exploring = exploring
+        self.prediction_list = sorted(self.prediction_list, key=lambda x: x["filename"])
         # Check-ups
         if len(self.prediction_list) != len(self.target_list):
             print(f"INFO: Inconsistent number of predictions[{len(self.prediction_list)}] and targets[{len(self.target_list)}]")
 
     def __getitem__(self, idx):
         pred_stx = self.stixel_reader.extract_stixel_from_prediction(self.prediction_list[idx]['prediction'], detection_threshold=self.current_threshold)
+        targ_stx = read_stixel_from_csv(
+            os.path.join(self.target_folder, self.prediction_list[idx]['filename'] + ".csv"))
         if self.obstacle_detection_mode:
             pred_stx = _get_obstacles_only(pred_stx)
-        targ_stx = read_stixel_from_csv(os.path.join(self.target_folder, self.prediction_list[idx]['filename'] + ".csv"))
+            targ_stx = _get_obstacles_only(targ_stx)
         if self.exploring:
             return pred_stx, targ_stx, self.prediction_list[idx]['image']
         else:
@@ -99,7 +102,7 @@ class StixelNExTLoader(EvaluationDataloader):
             output = model(sample)
             # fetch data from GPU
             output = output.cpu().detach()
-            self.prediction_list.append({"filename": name, "prediction": output, "image": image})
+            self.prediction_list.append({"filename": name, "prediction": output})    #, "image": image})
             if (idx+1) % 50 == 0:
                 print(f"Sample {idx + 1} from {len(testing_data)} predicted.")
         print(f"Predictions with Checkpoint {weights_file} created!")

@@ -7,6 +7,7 @@ import numpy as np
 from metrics.PrecisionRecall import PrecisionRecall
 from datetime import datetime
 from resultloader import StixelNExTLoader as Dataloader
+import pandas as pd
 
 overall_start_time = datetime.now()
 
@@ -47,7 +48,7 @@ def main():
                                   )
 
         # overwrite of pred_threshold
-        thresholds = np.linspace(0.1, 1.0, num=config['evaluation']['num_thresholds'])
+        thresholds = np.linspace(0.01, 1.0, num=config['evaluation']['num_thresholds'])
 
         # A list with all average prec. and recall by IoU
         precision_by_iou = []
@@ -92,6 +93,15 @@ def main():
         wandb_logger.log({"PR curve": wandb.plot.line(table, "Recall", "Precision",
                                                       title=f"Precision-Recall over {len(test_data_generator)} samples")})
         wandb_logger.log({"F1": sum(f1_score_by_iou) / len(f1_score_by_iou)})
+        wandb_logger.log({"Precision": sum(precision_by_iou) / len(precision_by_iou)})
+        wandb_logger.log({"Recall": sum(recall_by_iou) / len(recall_by_iou)})
+        df = pd.DataFrame({
+            'Threshold': thresholds,
+            'Precision': precision_by_iou,
+            'Recall': recall_by_iou,
+            'F1 Score': f1_score_by_iou
+        })
+        wandb.log({"Full Data": wandb.Table(dataframe=df)})
 
 
 if __name__ == '__main__':

@@ -3,6 +3,7 @@ import yaml
 with open('config.yaml') as yamlfile:
     config = yaml.load(yamlfile, Loader=yaml.FullLoader)
 import os
+import numpy as np
 from metrics.ObstacleDetection import ObstacleMetric, visualize_stixels_on_image
 if config['evaluation']['model'] == "StixelNExT":
     from resultloader import StixelNExTLoader as Dataloader
@@ -29,14 +30,18 @@ def main():
                                   tags=["StixelNExT", "obstacle detection"]
                                   )
         i = 0
+        scores = []
         for pred, targ, image in test_data_generator:
             i += 1
             score = metric.evaluate(pred, targ)
             # test_data_generator.stixel_reader.show_stixel(image, stixel_list=pred, color=[255, 0, 0])
+            wandb_logger.log({"score": score})
+            scores.append(score)
             if i % 10 == 0:
                 print(f"Current score: {score}")
             if i in [100, 200, 300, 400]:
-                visualize_stixels_on_image(image, pred, targ, name=f"StixelNExT_{i}")
+                visualize_stixels_on_image(image, pred, targ, name=f"StixelNExT_{i}", stixel_width=config['grid_step'])
+        wandb_logger.log({"Std Sigma": np.std(scores)})
         wandb_logger.log({"Obstacle Score": metric.get_score()})
 
 

@@ -28,7 +28,7 @@ class ObstacleMetric(EvaluationMetric):
         return sum(self.scores) / len(self.scores)
 
 
-def visualize_stixels_on_image(img, predictions, targets, stixel_width=8, name="sampleone"):
+def visualize_stixels_on_image(img, predictions, targets, stixel_width=4, name="sampleone"):
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     img = Image.fromarray(img)
     draw = ImageDraw.Draw(img)

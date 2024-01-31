@@ -10,9 +10,21 @@ def calculate_stixel_iou(pred: Stixel, target: Stixel):
     overlap_start = max(target.top, pred.top)
     overlap_end = min(target.bottom, pred.bottom)
     intersection = max(0, overlap_end - overlap_start)
+    total_height_pred = pred.bottom - pred.top
+    total_height_target = target.bottom - target.top
+    union = total_height_pred + total_height_target - intersection
+    iou = intersection / union if union != 0 else 0
+    return iou
+
+"""
+def calculate_stixel_iou(pred: Stixel, target: Stixel):
+    overlap_start = max(target.top, pred.top)
+    overlap_end = min(target.bottom, pred.bottom)
+    intersection = max(0, overlap_end - overlap_start)
     union = target.bottom - target.top
     iou = intersection / union if union != 0 else 0
     return iou
+"""
 
 
 class PrecisionRecall(EvaluationMetric):
