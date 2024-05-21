@@ -1,12 +1,12 @@
 batch_size: 2
-data_path: /home/marcel/workspace/datasets
+data_path: /media/marcel/Data1/Datasets
 # /home/marcel/workspace/datasets
 # /media/marcel/Data1/Datasets
-dataset: kitti
+dataset: ameise
 explore_data: false
-grid_step: 4
-img_height: 376
-img_width: 1248
+grid_step: 8
+img_height: 1200
+img_width: 1920
 inspect_model: true
 learning_rate: 0.001
 load_weights: false
@@ -29,7 +29,7 @@ nn:
   - 384
   - 768
 num_epochs: 40
-pred_threshold: 0.48
+pred_threshold: 0.45
 evaluation:
   iou: 0.5
   num_thresholds: 100
@@ -40,5 +40,6 @@ resources:
   val_worker: 2
 test_loss: true
 training: true
-weights_file: StixelNExT_prime-sunset-157_epoch-8_test-error-0.23861433565616608.pth
+weights_file: StixelNExT_volcanic-spaceship-170_epoch-31_test-error-0.2544909715652466.pth
+# StixelNExT_volcanic-spaceship-170_epoch-31_test-error-0.2544909715652466
 # StixelNExT_prime-sunset-157_epoch-8_test-error-0.23861433565616608.pth

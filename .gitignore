@@ -161,3 +161,4 @@ cython_debug/
 .idea/
 wandb
 config.yaml
+*.png

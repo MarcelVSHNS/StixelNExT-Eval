@@ -29,8 +29,9 @@ def _get_obstacles_only(stixels):
 class StixelNExTLoader(EvaluationDataloader):
     def __init__(self, obstacle_detection_mode=False, exploring=False):
         # Targets
+        self.obstacle_detection_mode = obstacle_detection_mode
         if obstacle_detection_mode:
-            dataset_snippet = 'cityscapes/kitti'
+            dataset_snippet = 'cityscapes/ameise'
             targets = "targets_from_lidar"
         else:
             dataset_snippet = config['dataset']
@@ -44,7 +45,6 @@ class StixelNExTLoader(EvaluationDataloader):
         # Stixel Interpreter
         self.stixel_reader = StixelNExTInterpreter()
         self.current_threshold = config['pred_threshold']
-        self.obstacle_detection_mode = obstacle_detection_mode
         self.exploring = exploring
         self.prediction_list = sorted(self.prediction_list, key=lambda x: x["filename"])
         # Check-ups
@@ -102,7 +102,10 @@ class StixelNExTLoader(EvaluationDataloader):
             output = model(sample)
             # fetch data from GPU
             output = output.cpu().detach()
-            self.prediction_list.append({"filename": name, "prediction": output})    #, "image": image})
+            if self.obstacle_detection_mode:
+                self.prediction_list.append({"filename": name, "prediction": output, "image": image})
+            else:
+                self.prediction_list.append({"filename": name, "prediction": output})
             if (idx+1) % 50 == 0:
                 print(f"Sample {idx + 1} from {len(testing_data)} predicted.")
         print(f"Predictions with Checkpoint {weights_file} created!")
