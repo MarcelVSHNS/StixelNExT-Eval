@@ -4,7 +4,7 @@ with open('config.yaml') as yamlfile:
     config = yaml.load(yamlfile, Loader=yaml.FullLoader)
 import os
 import numpy as np
-from metrics.PrecisionRecall import PrecisionRecall
+from metric.PrecisionRecall import PrecisionRecall
 from datetime import datetime
 from resultloader import StixelNExTLoader as Dataloader
 import pandas as pd
