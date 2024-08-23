@@ -1,3 +1,4 @@
 PyYAML
 numpy
-wandb
+pyStixel-lib
+kitti360scripts
