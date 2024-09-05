@@ -1,108 +1,67 @@
-import wandb
-import yaml
-with open('config.yaml') as yamlfile:
-    config = yaml.load(yamlfile, Loader=yaml.FullLoader)
-import os
+from dataloader import WaymoDataLoader, WaymoData
+import open3d as o3d
 import numpy as np
-from metric.PrecisionRecall import PrecisionRecall
-from datetime import datetime
-from resultloader import StixelNExTLoader as Dataloader
-import pandas as pd
-
-overall_start_time = datetime.now()
+import yaml
 
 
-def main():
-    test_data_generator = Dataloader(exploring=config['explore_data'])
-    metric = PrecisionRecall(iou_threshold=config['evaluation']['iou'], rm_used=True)
-    if config['explore_data']:
-        test_data_generator.set_threshold(0.8)
-        pred, targ, image = test_data_generator[4]
-        precision, recall = metric.evaluate(pred, targ)
-        print(f"pred_len: {len(pred)}, targ_len: {len(targ)}")
-        print(f'Precision: {precision}, Recall: {recall}')
-        test_data_generator.stixel_reader.show_stixel(image, stixel_list=targ, color=[0, 255, 0])
-        test_data_generator.stixel_reader.show_stixel(image, stixel_list=pred, color=[255, 0, 0])
-    # Create an export of analysed data
-    if config['logging']['activate']:
-        # Init the logger
-        # e.g. StixelNExT_ancient-silence-25_epoch-94_loss-0.09816327691078186.pth predictions_from_stereo
-        run = config['weights_file']
-        if config['evaluation']['model'] == "Stereo":
-            run = "Stereo"
-            checkpoint = "-"
-            epochs = "-"
-        else:
-            run_logger = run.split('_')[1]
-            checkpoint, _ = os.path.splitext(run)
-            epochs = run.split('_')[2].split('-')[1]
+with open('config.yaml') as yaml_file:
+    config = yaml.load(yaml_file, Loader=yaml.FullLoader)
+loader = WaymoDataLoader(data_dir=config['metric_data_path'],
+                         result_dir=config['results_path'],
+                         first_only=False)
+sample: WaymoData = loader[0][-1]
 
-        wandb_logger = wandb.init(project=config['logging']['project'],
-                                  config={
-                                      "run": run_logger,
-                                      "dataset": config['dataset'],
-                                      "checkpoint": checkpoint,
-                                      "epochs": epochs
-                                  },
-                                  tags=["metrics", "testing"]
-                                  )
+point_cloud = o3d.geometry.PointCloud()
+stxl_wrld_pts, colors = sample.stixel_wrld.get_pseudo_coordinates(respect_t=True)
+point_cloud.points = o3d.utility.Vector3dVector(stxl_wrld_pts)
+point_cloud.colors = o3d.utility.Vector3dVector(colors)
 
-        # overwrite of pred_threshold
-        thresholds = np.linspace(0.01, 1.0, num=config['evaluation']['num_thresholds'])
+bounding_boxes = []
+for box in sample.laser_labels:
+    center_x, center_y, center_z = box.camera_synced_box.center_x, box.camera_synced_box.center_y, box.camera_synced_box.center_z
+    length, width, height = box.camera_synced_box.length, box.camera_synced_box.width, box.camera_synced_box.height
+    heading = box.camera_synced_box.heading
 
-        # A list with all average prec. and recall by IoU
-        precision_by_iou = []
-        recall_by_iou = []
-        f1_score_by_iou = []
-        for threshold in thresholds:
-            print(f"Evaluating threshold: {threshold} ...")
-            test_data_generator.set_threshold(threshold)
-            # A list with precision and recall per sample of testdata
-            precision_by_testdata = []
-            recall_by_testdata = []
-            f1_score_by_testdata = []
-            for sample in test_data_generator:
-                try:
-                    if config['explore_data']:
-                        prediction, target, _ = sample
-                    else:
-                        prediction, target = sample
-                except FileNotFoundError as e:
-                    continue
-                # iterate over all samples
-                precision, recall = metric.evaluate(prediction, target)
-                precision_by_testdata.append(precision)
-                recall_by_testdata.append(recall)
-                f1_score = metric.get_score()
-                f1_score_by_testdata.append(f1_score)
-            avg_prec = sum(precision_by_testdata) / len(precision_by_testdata)
-            avg_rec = sum(recall_by_testdata) / len(recall_by_testdata)
-            avg_f1 = sum(f1_score_by_testdata) / len(f1_score_by_testdata)
-            print(f"... Precision: {avg_prec}")
-            print(f"... Recall: {avg_rec}")
-            print(f"... F1 Score: {avg_f1}")
-            # calculate average over all samples and append to IoU list
-            precision_by_iou.append(avg_prec)
-            recall_by_iou.append(avg_rec)
-            f1_score_by_iou.append(avg_f1)
-            step_time = datetime.now() - overall_start_time
-            print("Time elapsed: {}".format(step_time))
+    box_corners = np.array([
+        [-length / 2, -width / 2, -height / 2],
+        [ length / 2, -width / 2, -height / 2],
+        [ length / 2,  width / 2, -height / 2],
+        [-length / 2,  width / 2, -height / 2],
+        [-length / 2, -width / 2,  height / 2],
+        [ length / 2, -width / 2,  height / 2],
+        [ length / 2,  width / 2,  height / 2],
+        [-length / 2,  width / 2,  height / 2]
+    ])
 
-        data = [[x, y] for (x, y) in zip(recall_by_iou, precision_by_iou)]
-        table = wandb.Table(data=data, columns=["Recall", "Precision"])
-        wandb_logger.log({"PR curve": wandb.plot.line(table, "Recall", "Precision",
-                                                      title=f"Precision-Recall over {len(test_data_generator)} samples")})
-        wandb_logger.log({"F1": sum(f1_score_by_iou) / len(f1_score_by_iou)})
-        wandb_logger.log({"Precision": sum(precision_by_iou) / len(precision_by_iou)})
-        wandb_logger.log({"Recall": sum(recall_by_iou) / len(recall_by_iou)})
-        df = pd.DataFrame({
-            'Threshold': thresholds,
-            'Precision': precision_by_iou,
-            'Recall': recall_by_iou,
-            'F1 Score': f1_score_by_iou
-        })
-        wandb.log({"Full Data": wandb.Table(dataframe=df)})
+    # Schritt 2: Rotation (Heading) um die Z-Achse anwenden
+    rotation_matrix = np.array([
+        [np.cos(heading), -np.sin(heading), 0],
+        [np.sin(heading),  np.cos(heading), 0],
+        [0,               0,                1]
+    ])
+
+    # Eckpunkte drehen und anschließend um das Zentrum verschieben
+    rotated_corners = box_corners @ rotation_matrix.T
+    rotated_corners += np.array([center_x, center_y, center_z])
+
+    # Schritt 3: Bounding Box in Open3D visualisieren
+    lines = [
+        [0, 1], [1, 2], [2, 3], [3, 0],  # Untere Ebene
+        [4, 5], [5, 6], [6, 7], [7, 4],  # Obere Ebene
+        [0, 4], [1, 5], [2, 6], [3, 7]   # Verbindungen zwischen Ebenen
+    ]
+
+    colors = [[1, 0, 0] for i in range(len(lines))]  # Farbe Rot
+
+    # Erstelle LineSet für die Box-Visualisierung
+    line_set = o3d.geometry.LineSet()
+    line_set.points = o3d.utility.Vector3dVector(rotated_corners)
+    line_set.lines = o3d.utility.Vector2iVector(lines)
+    line_set.colors = o3d.utility.Vector3dVector(colors)
+    bounding_boxes.append(line_set)
 
 
-if __name__ == '__main__':
-    main()
+
+# Visualise point cloud
+o3d.visualization.draw_geometries([point_cloud] + bounding_boxes)
+print("Data loaded!")
