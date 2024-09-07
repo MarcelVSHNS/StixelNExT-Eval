@@ -2,12 +2,22 @@ import numpy as np
 import os
 import glob
 from waymo_open_dataset import dataset_pb2 as open_dataset
+from waymo_open_dataset.v2 import convert_range_image_to_point_cloud
 from waymo_open_dataset.label_pb2 import Label
 from waymo_open_dataset.utils import frame_utils
 from PIL import Image
 import tensorflow as tf
 from typing import List
 from stixel import StixelWorld
+
+
+point_dtype = np.dtype([
+    ('x', np.float64),
+    ('y', np.float64),
+    ('z', np.float64),
+    ('proj_x', np.int32),
+    ('proj_y', np.int32)
+])
 
 
 class WaymoData:
@@ -27,10 +37,57 @@ class WaymoData:
         self.laser_labels: Label = tf_frame.laser_labels
         self.cam_calib = sorted(self.frame.context.camera_calibrations, key=lambda i: i.name)[0]
         self.stixel_wrld = stixel
+        K = self._get_camera_matrix()
         # according to Waymo docs: // Camera frame to vehicle frame.
-        self.stixel_wrld.camera_info.T = np.array(self.cam_calib.extrinsic.transform).reshape(4, 4) # TODO: check, np.linalg.inv()
+        T = np.linalg.inv(np.array(self.cam_calib.extrinsic.transform).reshape(4, 4))
+        self.stixel_wrld.camera_info.K = K
+        self.stixel_wrld.camera_info.T = T
         # self.stixel_pts: np.array = self.stixel_wrld.get_pseudo_coordinates(respect_t=False)
         self.image: np.array = Image.fromarray(tf.image.decode_jpeg(img.image).numpy())
+        self._point_slices(self.frame, cam_idx)
+
+    def _get_camera_matrix(self):
+        # Extract intrinsic parameters: 1d Array of [f_u, f_v, c_u, c_v, k{1, 2}, p{1, 2}, k{3}]
+        waymo_cam_RT = np.array([0, -1, 0, 0, 0, 0, -1, 0, 1, 0, 0, 0, 0, 0, 0, 1]).reshape(4, 4)
+        f_u, f_v, c_u, c_v = self.cam_calib.intrinsic[:4]
+        # Construct the camera matrix K
+        K_tmp = np.array([
+            [f_u, 0, c_u, 0],
+            [0, f_v, c_v, 0],
+            [0, 0, 1, 0],
+            [0, 0, 0, 1]
+        ])
+        k_exp = K_tmp @ waymo_cam_RT
+        return k_exp[:3, :3]
+
+    def _point_slices(self, frame, cam_idx):
+        """
+        Slices the top lidar point cloud into pieces, fitting for every camera incl. projections
+        Args:
+            frame: Expects the full frame
+        Returns: A list of points and a list of projections: (0 = Front, 1 = Side_left, 2 = Side_right, 3 = Left, 4 = Right)
+        shape: [x, y, z, proj_x, proj_y]
+        """
+        # Cuts for just the front view (front = 0, front_left = 1, side_left = 2, front_right = 3, side_right = 4)
+        (range_images, camera_projections, segmentation_labels, range_image_top_pose) = \
+            frame_utils.parse_range_image_and_camera_projection(frame)
+        points, cp_points = frame_utils.convert_range_image_to_point_cloud(
+            frame,
+            range_images,
+            camera_projections,
+            range_image_top_pose)
+        # 3d points in vehicle frame, just pick Top LiDAR
+        laser_points = points[0]
+        laser_projection_points = tf.constant(cp_points[0], dtype=tf.int32)
+        images = sorted(frame.images, key=lambda i: i.name)
+        # define mask where the projections equal the picture view
+        # (0 = Front, 1 = Side_left, 2 = Side_right, 3 = Left, 4 = Right)
+        mask = tf.equal(laser_projection_points[..., 0], images[cam_idx].name)
+        # transform points after slicing it from the mask into float values
+        laser_points_view = tf.gather_nd(laser_points, tf.where(mask)).numpy()
+        laser_camera_projections_view = tf.cast(tf.gather_nd(laser_projection_points, tf.where(mask)), dtype=tf.float32).numpy()
+        concatenated_laser_pts = np.column_stack((laser_points_view, laser_camera_projections_view[..., 1:3]))
+        self.points = np.array([tuple(row) for row in concatenated_laser_pts], dtype=point_dtype)
 
 
 class WaymoDataLoader:

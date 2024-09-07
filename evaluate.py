@@ -1,4 +1,5 @@
 from dataloader import WaymoDataLoader, WaymoData
+from stixel.utils import draw_stixels_on_image
 import open3d as o3d
 import numpy as np
 import yaml
@@ -9,12 +10,15 @@ with open('config.yaml') as yaml_file:
 loader = WaymoDataLoader(data_dir=config['metric_data_path'],
                          result_dir=config['results_path'],
                          first_only=False)
-sample: WaymoData = loader[0][-1]
+sample: WaymoData = loader[0][15]
 
-point_cloud = o3d.geometry.PointCloud()
-stxl_wrld_pts, colors = sample.stixel_wrld.get_pseudo_coordinates(respect_t=True)
-point_cloud.points = o3d.utility.Vector3dVector(stxl_wrld_pts)
-point_cloud.colors = o3d.utility.Vector3dVector(colors)
+stixel_img = draw_stixels_on_image(sample.stixel_wrld.image, sample.stixel_wrld.stixel)
+stixel_img.show()
+
+pcd = o3d.geometry.PointCloud()
+stxl_wrld_pts, colors = sample.stixel_wrld.get_pseudo_coordinates()
+pcd.points = o3d.utility.Vector3dVector(stxl_wrld_pts)
+pcd.colors = o3d.utility.Vector3dVector(colors)
 
 bounding_boxes = []
 for box in sample.laser_labels:
@@ -60,8 +64,6 @@ for box in sample.laser_labels:
     line_set.colors = o3d.utility.Vector3dVector(colors)
     bounding_boxes.append(line_set)
 
-
-
 # Visualise point cloud
-o3d.visualization.draw_geometries([point_cloud] + bounding_boxes)
+o3d.visualization.draw_geometries([pcd] + bounding_boxes)
 print("Data loaded!")
