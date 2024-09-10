@@ -11,6 +11,56 @@ from typing import List
 from stixel import StixelWorld
 
 
+def cartesian_to_spherical(x, y, z):
+    """
+    Wandelt kartesische Koordinaten (x, y, z) in sphärische Koordinaten (r, theta, phi) um.
+
+    :return: Radius (r), Azimut-Winkel (theta), Elevation-Winkel (phi)
+    """
+    r = np.sqrt(x ** 2 + y ** 2 + z ** 2)
+    theta = np.arctan2(y, x)  # Azimut-Winkel
+    phi = np.arctan2(z, np.sqrt(x ** 2 + y ** 2))  # Elevation-Winkel
+    return r, theta, phi
+
+
+def is_bbox_in_hfov(bbox_center, hfov):
+    """
+    Prüft, ob der Mittelpunkt einer Bounding Box im horizontalen Sichtfeld (HFOV) liegt.
+
+    :param bbox_center: Mittelpunkt der Bounding Box [x, y, z].
+    :param hfov: Horizontaler Sichtfeldwinkel der Kamera in Radiant.
+
+    :return: True, wenn die Bounding Box im HFOV liegt, False sonst.
+    """
+    x, y, z = bbox_center
+    _, theta, _ = cartesian_to_spherical(x, y, z)
+
+    # HFOV-Bereich bestimmen (halb links und halb rechts vom Mittelpunkt)
+    half_hfov = hfov / 2
+    if -half_hfov <= theta <= half_hfov:
+        return True
+    return False
+
+
+def filter_bboxes_by_hfov(bboxes, hfov):
+    """
+    Filtert Bounding Boxen basierend auf dem horizontalen Sichtfeld (HFOV).
+
+    :param bboxes: Liste der Bounding Boxen mit Zentren [x, y, z].
+    :param hfov: Horizontaler Sichtfeldwinkel der Kamera in Radiant.
+
+    :return: Liste der gefilterten Bounding Boxen, die im HFOV liegen.
+    """
+    filtered_bboxes = []
+
+    for bbox in bboxes:
+        bbox_center = [bbox.box.center_x, bbox.box.center_y, bbox.box.center_z]
+        if is_bbox_in_hfov(bbox_center, hfov):
+            filtered_bboxes.append(bbox)
+
+    return filtered_bboxes
+
+
 point_dtype = np.dtype([
     ('x', np.float64),
     ('y', np.float64),
@@ -34,7 +84,7 @@ class WaymoData:
         self.cam_idx: int = cam_idx
         img = sorted(tf_frame.images, key=lambda i: i.name)[cam_idx]
         self.name = name
-        self.laser_labels: Label = tf_frame.laser_labels
+        self.laser_labels = filter_bboxes_by_hfov(tf_frame.laser_labels, np.deg2rad(50.4))
         self.cam_calib = sorted(self.frame.context.camera_calibrations, key=lambda i: i.name)[0]
         self.stixel_wrld = stixel
         K = self._get_camera_matrix()
