@@ -13,7 +13,8 @@ cam_info = CameraInfo(cam_mtx_k=calib['K'])
 result_map = sorted(glob.glob(os.path.join(config['results_path'], '*.csv')))
 for result in result_map:
     stixel_world: StixelWorld = StixelWorld.read(filepath=result,
+                                                 image_folder='/home/marcel/workspace/datasets/waymo-od/validation/FRONT',
                                                  camera_info=cam_info)
-    stixel_world.save(filepath="sample/results",
+    stixel_world.save(filepath="/home/marcel/workspace/datasets/waymo-od/validation/Stixel_bbox/packed",
                       binary=True,
-                      incl_image=True)
+                      incl_image=False)

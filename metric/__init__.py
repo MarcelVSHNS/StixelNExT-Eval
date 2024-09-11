@@ -1,1 +1,1 @@
-from .Metric import Stixel, EvaluationMetric
+from .bbox_iou import evaluate_sample_3dbbox

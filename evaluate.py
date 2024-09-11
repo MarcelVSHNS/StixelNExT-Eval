@@ -1,109 +1,64 @@
+"""
+TODO: WANDB Integration
+"""
+import os.path
 from dataloader import WaymoDataLoader, WaymoData
+from metric import evaluate_sample_3dbbox
+from utils import draw_stixel_and_bboxes
 from stixel.utils import draw_stixels_on_image
-import open3d as o3d
 import numpy as np
+import pandas as pd
 import yaml
+from datetime import datetime
+
+overall_start_time = datetime.now()
 
 
+if __name__ == "__main__":
+    with open('config.yaml') as yaml_file:
+        config = yaml.load(yaml_file, Loader=yaml.FullLoader)
+    loader = WaymoDataLoader(data_dir=config['metric_data_path'],
+                             result_dir=config['results_path'],
+                             first_only=False)
 
+    overall_result = {}
+    overall_result['Stixel-Score'] = np.array([])
+    overall_result['BBox-Score'] = np.array([])
+    sample_results = {}
+    index = 1
+    for record in loader:
+        sample_idx = 0
+        print(f"Starting record with {len(record)} samples.")
+        for sample in record:
+            # if sample_idx == 12:
+            start_time = datetime.now()
+            results, stixel_pts, stixel_colors = evaluate_sample_3dbbox(sample.stixel_wrld, sample.laser_labels)
+            overall_result['Stixel-Score'] = np.append(overall_result['Stixel-Score'], results['Stixel-Score'])
+            overall_result['BBox-Score'] = np.append(overall_result['BBox-Score'], results['BBox-Score'])
+            sample_results[sample.name] = results
+            sample_time = datetime.now() - start_time
+            results_short = results.copy()
+            results_short.pop('bbox_dist', None)
+            print(f"{sample.name} (idx={sample_idx}) with Stixel-Score:{results['Stixel-Score']} and BBox-Score: {results['BBox-Score']} within {sample_time}. {results_short}")
+            #if sample_idx == 9:
+            #    img = draw_stixels_on_image(sample.image, sample.stixel_wrld.stixel)
+            #    img.show()
+            #    draw_stixel_and_bboxes(stixel_pts, stixel_colors, sample.laser_labels)
+            sample_idx += 1
+        step_time = datetime.now() - overall_start_time
+        print("#####################################################################")
+        print(f"Record-file {index}/ {len(loader)} evaluated with [Stixel-Score: {np.mean(overall_result['Stixel-Score'])} %/ BBox-Score of {np.mean(overall_result['BBox-Score'])} %]. Time elapsed: {step_time}")
+        index += 1
+    overall_score = np.mean(overall_result['Stixel-Score'])
+    overall_bbox_score = np.mean(overall_result['BBox-Score'])
 
-def rotate_point(x, y, heading):
-    """Rotiert einen Punkt (x, y) um den Heading-Winkel."""
-    cos_h = np.cos(heading)
-    sin_h = np.sin(heading)
-    x_new = cos_h * x - sin_h * y
-    y_new = sin_h * x + cos_h * y
-    return x_new, y_new
+    df = pd.DataFrame.from_dict(sample_results, orient='index')
+    df.index.name = 'Sample_ID'
+    df.to_csv(os.path.join(config['results_path'], f"{loader.name}-{config['results_name']}_StixelScore-{overall_score}_bboxScore-{overall_bbox_score}.csv"))
 
-
-def is_point_in_bbox(point, bbox, tol=1.2):
-    """Überprüft, ob ein Punkt in einer Bounding Box liegt."""
-    # Punkt und Box-Koordinaten relativ zum Zentrum der Box
-    px, py, pz = point
-    cx, cy, cz  = bbox.center_x, bbox.center_y, bbox.center_z
-    length, width, height = bbox.length * tol, bbox.width * tol, bbox.height * tol
-    heading = bbox.heading
-
-    # Punkt relativ zum Box-Zentrum verschieben
-    rel_x = px - cx
-    rel_y = py - cy
-
-    # Punkt um den Heading-Winkel der Box rotieren
-    rotated_x, rotated_y = rotate_point(rel_x, rel_y, -heading)
-
-    # Box-Grenzen überprüfen
-    in_x_bounds = -length / 2 <= rotated_x <= length / 2
-    in_y_bounds = -width / 2 <= rotated_y <= width / 2
-    in_z_bounds = -height / 2 <= (pz - cz) <= height / 2
-
-    return in_x_bounds and in_y_bounds and in_z_bounds
-
-
-def calculate_percentage_and_colors(point_cloud, bbox):
-    """Berechnet den Prozentsatz der Punkte, die in der Bounding Box liegen und weist Farben zu."""
-    total_points = len(point_cloud)
-    inside_points = 0
-    colors = []
-
-    for point in point_cloud:
-        if is_point_in_bbox(point, bbox.box):
-            inside_points += 1
-            color = [77, 234, 234]
-            colors.append(np.array(color) / 255.0)  # Türkis für Treffer
-        else:
-            color = [255, 139, 254]
-            colors.append(np.array(color) / 255.0)  # Pink für Verfehlungen
-
-    percentage_inside = (inside_points / total_points) * 100
-    return percentage_inside, colors, bbox.id
-
-
-def count_hits(point_cloud, bboxes, threshold=50):
-    """Zählt, wie viele Punktwolken einen bestimmten Prozentsatz in der Bounding Box treffen."""
-    for bbox in bboxes:
-        percentage_inside, colors, idx = calculate_percentage_and_colors(point_cloud, bbox)
-        if percentage_inside > 0:
-            if percentage_inside >= threshold:
-                return 1, colors, idx
-            else:
-                return 0, colors, idx
-    return -1, colors, None
-
-
-with open('config.yaml') as yaml_file:
-    config = yaml.load(yaml_file, Loader=yaml.FullLoader)
-loader = WaymoDataLoader(data_dir=config['metric_data_path'],
-                         result_dir=config['results_path'],
-                         first_only=True)
-sample: WaymoData = loader[0][0]
-
-stixel_pt_list = []
-colors_list = []
-score = 0
-count = 0
-bbox_dict = {}
-for bbox in sample.laser_labels:
-    bbox_dict[bbox.id] = 0
-for stixel in sample.stixel_wrld.stixel:
-    count += 1
-    stixel_coord, _ = stixel.convert_to_pseudo_coordinates(camera_calib=sample.stixel_wrld.camera_info)
-    result, colors, idx = count_hits(stixel_coord, sample.laser_labels)
-    if idx is not None:
-        bbox_dict[idx] +=1
-    score += result
-    stixel_pt_list.append(stixel_coord)
-    colors_list.extend(colors)
-
-num_bboxes_without_stx = 0
-for value in bbox_dict.values():
-    if value == 0:
-        num_bboxes_without_stx += 1
-bbox_score = len(bbox_dict) - num_bboxes_without_stx
-print(f"Stixel: {len(stixel_pt_list)}")
-print(f"Score: {score}")
-print(f"Result: {100 / len(stixel_pt_list) * score} %.")
-print(f"BBox-TN-Rate: {100 / len(bbox_dict) * bbox_score} % ({bbox_score} out of {len(bbox_dict)}).")
-
-# Visualise point cloud
-o3d.visualization.draw_geometries([pcd] + bounding_boxes)
-print("Data loaded!")
+    # sample: WaymoData = loader[0][0]
+    # results, stixel_pts, stixel_colors = evaluate_sample_3dbbox(sample.stixel_wrld, sample.laser_labels)
+    # print(results)
+    # Visualise point cloud
+    # draw_stixel_and_bboxes(stixel_pts, stixel_colors, sample.laser_labels)
+    print(f"Finished with a Stixel-Score of {overall_score} % and a BBox-Score of {overall_bbox_score} % over {len(sample_results)} samples.")
