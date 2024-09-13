@@ -1,5 +1,5 @@
 import numpy as np
-from jsonschema.exceptions import relevance
+import stixel as stx
 
 
 def _rotate_points(points, heading):
@@ -72,7 +72,7 @@ def _check_if_stixel_in_bboxes(point_cloud, bboxes, threshold):
     return -1, colors, None
 
 
-def evaluate_sample_3dbbox(stx_wrld, bboxes, iou_thres: int = 0.5):
+def evaluate_sample_3dbbox(stx_wrld: stx.StixelWorld, bboxes, iou_thres: int = 0.5):
     results = {}
     stixel_pt_list = []
     colors_list = []
@@ -83,9 +83,9 @@ def evaluate_sample_3dbbox(stx_wrld, bboxes, iou_thres: int = 0.5):
         bbox_dict[bbox.id] = {'count' : 0,
                               'in_camera': bbox.most_visible_camera_name == 'FRONT',
                               'has_lidar_pts': bbox.num_top_lidar_points_in_box > 2}
-    for stixel in stx_wrld.stixel:
+    for stxl in stx_wrld.stixel:
         count += 1
-        stixel_coord, _ = stixel.convert_to_pseudo_coordinates(camera_calib=stx_wrld.camera_info)
+        stixel_coord = stx.utils.transformation.convert_stixel_to_points(stxl=stxl, calibration=stx_wrld.context.calibration)
         result, colors, idx = _check_if_stixel_in_bboxes(stixel_coord, bboxes, threshold=iou_thres)
         if idx is not None:
             bbox_dict[idx]['count'] +=1

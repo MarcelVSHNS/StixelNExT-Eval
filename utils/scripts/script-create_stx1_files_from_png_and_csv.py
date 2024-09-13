@@ -1,4 +1,4 @@
-from stixel import StixelWorld, CameraInfo
+import stixel as stx
 import yaml
 import glob
 import os
@@ -6,15 +6,9 @@ import os
 with open('config.yaml') as yamlfile:
     config = yaml.load(yamlfile, Loader=yaml.FullLoader)
 
-with open('sample/results/waymo_calib.yaml') as yaml_file:
-    calib = yaml.load(yaml_file, Loader=yaml.FullLoader)
-cam_info = CameraInfo(cam_mtx_k=calib['K'])
 
-result_map = sorted(glob.glob(os.path.join(config['results_path'], '*.csv')))
+result_map = sorted(glob.glob(os.path.join("sample/data", '*.csv')))
 for result in result_map:
-    stixel_world: StixelWorld = StixelWorld.read(filepath=result,
-                                                 image_folder='/home/marcel/workspace/datasets/waymo-od/validation/FRONT',
-                                                 camera_info=cam_info)
-    stixel_world.save(filepath="/home/marcel/workspace/datasets/waymo-od/validation/Stixel_bbox/packed",
-                      binary=True,
-                      incl_image=False)
+    stixel_world: stx.StixelWorld = stx.read_csv(result,
+                                                 camera_calib_file="sample/waymo_calib.yaml")
+    stx.save(stixel_world, "sample/stxl/")

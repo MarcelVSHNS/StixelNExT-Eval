@@ -32,7 +32,7 @@ if __name__ == "__main__":
         for sample in record:
             # if sample_idx == 12:
             start_time = datetime.now()
-            results, stixel_pts, stixel_colors = evaluate_sample_3dbbox(sample.stixel_wrld, sample.laser_labels)
+            results, stixel_pts, stixel_colors = evaluate_sample_3dbbox(sample.stxl_wrld, sample.bboxes)
             overall_result['Stixel-Score'] = np.append(overall_result['Stixel-Score'], results['Stixel-Score'])
             overall_result['BBox-Score'] = np.append(overall_result['BBox-Score'], results['BBox-Score'])
             sample_results[sample.name] = results
