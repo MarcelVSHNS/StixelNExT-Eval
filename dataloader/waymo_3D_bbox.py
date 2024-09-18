@@ -82,17 +82,19 @@ class WaymoDataLoader:
         self.first_only: bool = first_only
         self.img_size = {'width': 1920, 'height': 1280}
         self.record_map = sorted(glob.glob(os.path.join(self.data_dir, '*.tfrecord')))
+        self.cam_idx: int = 0
         print(f"Found {len(self.record_map)} tf record files")
 
     def __getitem__(self, idx):
         frames = self.unpack_single_tfrecord_file_from_path(self.record_map[idx])
         waymo_data_chunk = []
         for frame_num, tf_frame in frames.items():
-            cam_idx: int = 0
-            name: str = f"{tf_frame.context.name}_{frame_num}_{open_dataset.CameraName.Name.Name(cam_idx + 1)}"
-            waymo_data_chunk.append(WaymoData(tf_frame=tf_frame,
-                                              name=name,
-                                              cam_idx=cam_idx))
+            # reduce the number of samples by 2
+            if frame_num % 2 == 0:
+                name: str = f"{tf_frame.context.name}_{frame_num}_{open_dataset.CameraName.Name.Name(self.cam_idx + 1)}"
+                waymo_data_chunk.append(WaymoData(tf_frame=tf_frame,
+                                                  name=name,
+                                                  cam_idx=self.cam_idx))
             if self.first_only:
                 break
         return waymo_data_chunk
