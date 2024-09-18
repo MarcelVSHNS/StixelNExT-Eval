@@ -1,4 +1,5 @@
 PyYAML
 numpy
 pyStixel-lib
-kitti360scripts
+torch
+einops

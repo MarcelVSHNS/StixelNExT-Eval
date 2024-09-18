@@ -1,14 +1,11 @@
-import numpy as np
-import os
 import glob
-from waymo_open_dataset import dataset_pb2 as open_dataset
-from waymo_open_dataset.v2 import convert_range_image_to_point_cloud
-from waymo_open_dataset.label_pb2 import Label
-from waymo_open_dataset.utils import frame_utils
-from PIL import Image
-import tensorflow as tf
-from typing import List
+import os
+
+import numpy as np
 import stixel as stx
+import tensorflow as tf
+from PIL import Image
+from waymo_open_dataset import dataset_pb2 as open_dataset
 
 
 def cartesian_to_spherical(x, y, z):
@@ -44,20 +41,43 @@ def filter_bboxes_by_hfov(bboxes, hfov, fov_margin=8):
 
 
 class WaymoData:
-    def __init__(self, tf_frame, name: str, stixel: stx.StixelWorld, cam_idx: int = 0):
+    def __init__(self, tf_frame, name: str, cam_idx: int = 0):
         # front = 0, front_left = 1, side_left = 2, front_right = 3, side_right = 4
         self.frame: open_dataset.Frame = tf_frame
         self.cam_idx: int = cam_idx
         self.name = name
-        self.stxl_wrld = stixel
         self.bboxes = filter_bboxes_by_hfov(tf_frame.laser_labels, np.deg2rad(50.4))
+        img = sorted(tf_frame.images, key=lambda i: i.name)[cam_idx]
+        self.image = Image.fromarray(tf.image.decode_jpeg(img.image).numpy())
+        front_cam_calib = sorted(self.frame.context.camera_calibrations, key=lambda i: i.name)[0]
+        K = self._get_camera_matrix(front_cam_calib.intrinsic)
+        T = np.linalg.inv(np.array(front_cam_calib.extrinsic.transform).reshape(4, 4))
+        self.calib: stx.stixel_world_pb2.CameraInfo = stx.stixel_world_pb2.CameraInfo()
+        self.calib.T.extend(T.flatten().tolist())
+        self.calib.K.extend(K.flatten().tolist())
+        self.calib.height = self.image.size[1]
+
+    @staticmethod
+    def _get_camera_matrix(intrinsics):
+        # Projection matrix: https://docs.ros.org/en/melodic/api/sensor_msgs/html/msg/CameraInfo.html
+        # Extract intrinsic parameters: 1d Array of [f_u, f_v, c_u, c_v, k{1, 2}, p{1, 2}, k{3}]
+        waymo_cam_RT = np.array([0, -1, 0, 0, 0, 0, -1, 0, 1, 0, 0, 0, 0, 0, 0, 1]).reshape(4, 4)
+        f_u, f_v, c_u, c_v = intrinsics[:4]
+        # Construct the camera matrix K
+        K_tmp = np.array([
+            [f_u, 0, c_u, 0],
+            [0, f_v, c_v, 0],
+            [0, 0, 1, 0],
+            [0, 0, 0, 1]
+        ])
+        camera_mtx = K_tmp @ waymo_cam_RT
+        return camera_mtx[:3, :3]
 
 
 class WaymoDataLoader:
-    def __init__(self, data_dir: str, result_dir: str, first_only=False):
+    def __init__(self, data_dir: str, first_only=False):
         self.name: str = "waymo-od"
         self.data_dir = os.path.join(data_dir)
-        self.result_dir = os.path.join(result_dir)
         self.first_only: bool = first_only
         self.img_size = {'width': 1920, 'height': 1280}
         self.record_map = sorted(glob.glob(os.path.join(self.data_dir, '*.tfrecord')))
@@ -69,14 +89,8 @@ class WaymoDataLoader:
         for frame_num, tf_frame in frames.items():
             cam_idx: int = 0
             name: str = f"{tf_frame.context.name}_{frame_num}_{open_dataset.CameraName.Name.Name(cam_idx + 1)}"
-            stixel_path = os.path.join(self.result_dir, name + ".stx1")
-            try:
-                stixel_wrld = stx.read(stixel_path)
-            except:
-                raise FileNotFoundError(f"Stixel: {stixel_path} not found.")
             waymo_data_chunk.append(WaymoData(tf_frame=tf_frame,
                                               name=name,
-                                              stixel=stixel_wrld,
                                               cam_idx=cam_idx))
             if self.first_only:
                 break

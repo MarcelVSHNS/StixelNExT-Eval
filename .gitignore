@@ -165,3 +165,4 @@ config.yaml
 *.csv
 *.tfrecord
 sample
+results/*
