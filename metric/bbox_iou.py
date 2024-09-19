@@ -58,19 +58,11 @@ def _calculate_percentage_and_colors_optimized(point_cloud, bbox, tolerance: flo
 
 
 def _check_if_stixel_in_bboxes(point_cloud, bboxes, threshold):
-    box_touched = False
+    colors = None
     for bbox in bboxes:
         percentage_inside, colors, idx = _calculate_percentage_and_colors_optimized(point_cloud, bbox)
-        if percentage_inside > 0:
-            if percentage_inside >= threshold:
-                return 1, colors, idx
-            else:
-                # return 0, colors, idx
-                box_touched = True
-    if box_touched:
-        return 0, colors, idx
-    # TODO: should be 0 to enable prec-recall curve
-    # return -1, colors, None
+        if percentage_inside >= threshold:
+            return 1, colors, idx
     return 0, colors, None
 
 
