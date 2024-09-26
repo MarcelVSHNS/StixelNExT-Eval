@@ -166,3 +166,4 @@ config.yaml
 *.tfrecord
 sample
 results/*
+models
