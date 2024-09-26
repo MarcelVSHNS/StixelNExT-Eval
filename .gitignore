@@ -166,4 +166,10 @@ config.yaml
 *.tfrecord
 sample
 results/*
+<<<<<<< Updated upstream
 models
+=======
+models/chckpts/*.pth
+models
+*.pth
+>>>>>>> Stashed changes

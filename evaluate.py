@@ -6,7 +6,6 @@ import os.path
 from collections import OrderedDict
 from datetime import datetime
 
-import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -19,7 +18,6 @@ from einops import rearrange
 import wandb
 from dataloader import WaymoDataLoader
 from metric import evaluate_sample_3dbbox
-from utils.visualization import draw_stixel_and_bboxes
 
 overall_start_time = datetime.now()
 
@@ -29,7 +27,7 @@ with open('config.yaml') as yaml_file:
 
 def main():
     loader = WaymoDataLoader(data_dir=config['metric_data_path'],
-                             first_only=True)
+                             first_only=False)
     precision = []
     recall = []
 
@@ -38,14 +36,13 @@ def main():
                      tags=["analysis"]
                      )
     artifact = run.use_artifact(f"{config['artifact']}", type='model')
-    analysis_artifact = wandb.Artifact('model_analysis', type='evaluation', description="Analyzed model artifact")
 
     stxl_model = StixelModel(wandb_artifact=artifact)
 
     result_dir = os.path.join('results', stxl_model.checkpoint_name)
     os.makedirs(result_dir, exist_ok=True)
 
-    for probability in np.arange(0.0, 1.0, 0.05):
+    for probability in np.arange(0.6, 0.95, 0.05):
         probab_result = {}
         probab_result['Stixel-Score'] = np.array([])
         probab_result['BBox-Score'] = np.array([])
@@ -58,9 +55,7 @@ def main():
                 # if sample_idx == 12:
                 start_time = datetime.now()
                 # Inference a Stixel World
-                start_inf = datetime.now()
                 stxl_wrld = stxl_model.inference(sample.image, probability=probability, calib=sample.calib)
-                print(f"Inference: {datetime.now() - start_inf}")
                 # Apply the evaluation
                 start_eval = datetime.now()
                 results, stixel_pts, stixel_colors = evaluate_sample_3dbbox(stxl_wrld, sample.bboxes)
@@ -73,10 +68,10 @@ def main():
                 results_short.pop('bbox_dist', None)
                 print(
                     f"{sample.name} (idx={sample_idx}) with Stixel-Score:{results['Stixel-Score']} and BBox-Score: {results['BBox-Score']} within {sample_time}. {results_short}")
-                if probability > 1.8:
-                    draw_stixels_result(waymo_data=sample, stxl_wrld=stxl_wrld, stixel_pts=stixel_pts,
-                                        stixel_colors=stixel_colors)
                 sample_idx += 1
+                # TODO: add current overall prec and recall
+                run.log({f"TotalPrecision@{probability}": np.mean(probab_result['Stixel-Score']),
+                         f"TotalRecall@{probability}": np.mean(probab_result['BBox-Score'])})
             step_time = datetime.now() - overall_start_time
             print("#####################################################################")
             print(
@@ -102,6 +97,8 @@ def main():
         precision.append(probab_score)
         recall.append(probab_bbox_score)
         # wandb log
+        f1_score = calculate_f1(precision=probab_score, recall=probab_bbox_score)
+        run.log({"F1-Score": f1_score, "probability": probability})
         run.log({"precision": probab_score, "recall": probab_bbox_score})
 
     plt.figure()
@@ -113,29 +110,18 @@ def main():
     plt.title(name)
     plt.legend()
     plt.savefig(os.path.join(result_dir, name + '.png'))
-
-    analysis_artifact.add_file(os.path.join(result_dir, name + '.png'))
-    run.log_artifact(analysis_artifact)
+    f1_prec = np.mean(precision)
+    f1_recall = np.mean(recall)
+    f1_score = calculate_f1(precision=f1_prec, recall=f1_recall)
+    run.log({"Mean_F1-Score": f1_score})
     run.finish()
 
 
-def draw_stixels_result(waymo_data, stxl_wrld, stixel_pts, stixel_colors):
-    """
-    Process an image sample, convert it to BGR, encode it, store it in stxl_wrld,
-    draw stixels, and display the image.
-
-    Args:
-        waymo_data: An object containing the image and bounding boxes.
-        stxl_wrld: An object that contains world information including the image.
-    """
-    img = np.array(waymo_data.image)
-    img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-    success, img_encoded = cv2.imencode('.png', img)
-    stxl_wrld.image = img_encoded.tobytes()
-    img_with_stixels = stx.draw_stixels_on_image(stxl_wrld)
-    img_with_stixels.show()
-    if len(stxl_wrld.stixel) != 0:
-        draw_stixel_and_bboxes(stixel_pts, stixel_colors, waymo_data.bboxes)
+def calculate_f1(precision: float, recall: float):
+    if precision + recall > 0:
+        return 2 * (precision * recall) / (precision + recall)
+    else:
+        return 0
 
 
 def download_artifact_files(wandb_artifact: wandb.Artifact):
@@ -151,12 +137,11 @@ class StixelModel:
     def __init__(self, wandb_artifact: wandb.Artifact = None):
         self.model_cfg = wandb_artifact.metadata
         model_filename, chckpt_filename = download_artifact_files(wandb_artifact)
-        self.checkpoint_name = os.path.basename(os.path.splitext(chckpt_filename)[0])
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
         relative_import_path = os.path.relpath(model_filename, os.getcwd())
         module_name = relative_import_path.replace('/', '.').replace('.py', '')
         module = importlib.import_module(module_name)
+        self.checkpoint_name = os.path.basename(os.path.splitext(chckpt_filename)[0])
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.model, model_cfg = module.get_model(config=self.model_cfg)
         if self.model_cfg['mode'] == "segmentation":
             from models import revert_segm as revert_fn
@@ -178,7 +163,7 @@ class StixelModel:
         if os.path.isfile(anchors_path):
             self.depth_anchors = pd.read_csv(anchors_path, index_col=0)
         else:
-            self.depth_anchors = self._create_depth_bins(5, 50, 64)
+            self.depth_anchors = self._create_depth_bins(5, 69, 64)
 
     def inference(self, input_img: Image, probability, calib: stx.stixel_world_pb2.CameraInfo) -> stx.StixelWorld:
         input_tensor: torch.Tensor = torch.from_numpy(np.array(input_img)).to(torch.float32)
@@ -186,10 +171,13 @@ class StixelModel:
         input_tensor = input_tensor.unsqueeze(0)
         input_tensor = input_tensor.to(self.device)
         with torch.no_grad():
+            start_t = datetime.now()
             output = self.model(input_tensor)
+            inf_t = datetime.now() - start_t
         output = output.cpu().detach()
         stxl_wrld: stx.StixelWorld = self.revert_fn(output[0], anchors=self.depth_anchors, prob=probability,
                                                     calib=calib)
+        print(f"Inference time: {datetime.now() - start_t} ({inf_t})")
         return stxl_wrld
 
     @staticmethod

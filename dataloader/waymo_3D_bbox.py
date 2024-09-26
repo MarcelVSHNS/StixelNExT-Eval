@@ -56,6 +56,7 @@ class WaymoData:
         self.calib.T.extend(T.flatten().tolist())
         self.calib.K.extend(K.flatten().tolist())
         self.calib.height = self.image.size[1]
+        self.ground_truth = None
 
     @staticmethod
     def _get_camera_matrix(intrinsics):
