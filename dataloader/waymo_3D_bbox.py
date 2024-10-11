@@ -95,7 +95,7 @@ class WaymoDataLoader:
                 waymo_data_chunk.append(WaymoData(tf_frame=tf_frame,
                                                   name=name,
                                                   cam_idx=self.cam_idx))
-            if self.first_only:
+            if len(waymo_data_chunk) > 0 and self.first_only:
                 break
         return waymo_data_chunk
 

@@ -76,7 +76,8 @@ def evaluate_sample_3dbbox(stx_wrld: stx.StixelWorld, bboxes, iou_thres: int = 0
     for bbox in bboxes:
         bbox_dict[bbox.id] = {'count': 0,
                               'in_camera': bbox.most_visible_camera_name == 'FRONT',
-                              'has_lidar_pts': bbox.num_top_lidar_points_in_box > 2}
+                              'has_lidar_pts': bbox.num_top_lidar_points_in_box > 2,
+                              'is_not_sign': bbox.type != 3}
     for stxl in stx_wrld.stixel:
         count += 1
         stixel_coord = stx.utils.transformation.convert_stixel_to_points(stxl=stxl,
@@ -96,8 +97,8 @@ def evaluate_sample_3dbbox(stx_wrld: stx.StixelWorld, bboxes, iou_thres: int = 0
             num_bboxes_without_stx += 1
     bbox_count_relevant = 0
     for bbox in bbox_dict.values():
-        # bbox['in_camera'] is True and
-        if bbox['in_camera'] is True and bbox['has_lidar_pts'] is True:
+        # bbox['in_camera'] is True
+        if bbox['in_camera'] and bbox['has_lidar_pts'] and bbox['is_not_sign']:
             bbox_count_relevant += 1
     bbox_score = len(bbox_dict) - num_bboxes_without_stx
 
