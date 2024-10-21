@@ -29,10 +29,15 @@ def main():
     result_dir = os.path.join('sample_results', stxl_model.checkpoint_name)
     os.makedirs(result_dir, exist_ok=True)
     sample = loader[31][0]
-    probability = 0.57
+    probability = 0.55
 
     # Inference a Stixel World
-    stxl_wrld = stxl_model.inference(sample.image, probability=probability, calib=sample.calib)
+    start_time = datetime.now()
+    stxl_infer = stxl_model.inference(sample.image)
+    print(f"inference time: {datetime.now() - start_time}")
+    start_time = datetime.now()
+    stxl_wrld = stxl_model.revert(stxl_infer, probability=probability, calib=sample.calib)
+    print(f"reverting time: {datetime.now() - start_time}")
     # if len(stxl_wrld.stixel) > 2000:
     #     continue
     # print(f"Inference: {datetime.now() - start_inf}")

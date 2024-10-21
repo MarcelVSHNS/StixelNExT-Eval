@@ -41,11 +41,10 @@ def main():
         dev = torch.device('cpu')
 
     with mp.Manager() as manager:
-        stxl_model = StixelModel(artifact=artifact, device=dev)
+        stxl_model = StixelModel(device=dev)
         stxl_model.model.share_memory()
         stxl_model.info()
         gpu_lock = manager.Lock()
-        queue = mp.Queue()
         # create results_folder
         result_dir = os.path.join('results', stxl_model.checkpoint_name)
         os.makedirs(result_dir, exist_ok=True)
@@ -124,6 +123,8 @@ def evaluate(probability: float,
                 stxl_infer = stxl_model.inference(sample.image)
                 torch.cuda.empty_cache()
             stxl_wrld = stxl_model.revert(stxl_infer, probability=probability, calib=sample.calib)
+            if len(stxl_wrld.stixel) > config['stx_dropout_threshold'] and config['stx_dropout']:
+                continue
             times[0].append(datetime.now() - start_inf)
             # Apply the evaluation
             start_eval = datetime.now()

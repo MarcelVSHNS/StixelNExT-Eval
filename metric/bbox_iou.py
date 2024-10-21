@@ -87,7 +87,7 @@ def evaluate_sample_3dbbox(stx_wrld: stx.StixelWorld, bboxes, iou_thres: int = 0
             bbox_dict[idx]['count'] += 1
         score += result
         stixel_pt_list.append(stixel_coord)
-        colors_list.extend(colors)
+        colors_list.append(colors)
 
     num_bboxes_without_stx = 0
     for bbox in bbox_dict.values():

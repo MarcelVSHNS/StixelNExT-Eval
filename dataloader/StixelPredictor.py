@@ -14,7 +14,7 @@ from einops import rearrange
 from torchinfo import summary
 from wandb.apis.importers import wandb
 
-from models.base.ConvNeXt_pretrained import get_model
+from models.base.ConvNeXt_pretrained import convnext_stixel as get_model
 
 
 def download_artifact_files(wandb_artifact: wandb.Artifact):
@@ -87,9 +87,9 @@ class StixelModel:
                           "n_candidates": 64,
                           "i_attributes": 3,
                           "n_bins": 64,
-                          "mode": "segmentation"}
-        self.checkpoint_name = "StixelNExT-Pro_iconic-aardvark-221_25"
-        self.chckpt_filename = "models/chckpts/StixelNExT-Pro_iconic-aardvark-221_25.pth"
+                          "mode": "classification"}
+        self.checkpoint_name = "StixelNExT-Pro_woven-wildflower-294_29"
+        self.chckpt_filename = "models/chckpts/StixelNExT-Pro_woven-wildflower-294_29.pth"
         self.checkpoint_name = os.path.basename(os.path.splitext(self.chckpt_filename)[0])
         self.model, _ = get_model(config=self.model_cfg)
 

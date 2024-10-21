@@ -35,29 +35,39 @@ def main():
                         job_type="analysis",
                         tags=["analysis"]
                         )
-    # model
-    stxl_model = StixelModel()
-    stxl_model.info()
-    # local results directory
-    result_dir = os.path.join('sample_results', stxl_model.checkpoint_name)
-    os.makedirs(result_dir, exist_ok=True)
+    # create model
+    if config["device"] == "gpu":
+        dev = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    else:
+        dev = torch.device('cpu')
 
-    index_list = list(range(0, len(loader), 32))
-    analyse_partial = partial(analyse,
-                              dataloader=loader
-                              )
-    start_time = datetime.now()
+    with mp.Manager() as manager:
+        stxl_model = StixelModel(device=dev)
+        stxl_model.model.share_memory()
+        stxl_model.info()
+        gpu_lock = manager.Lock()
+        # create results_folder
+        result_dir = os.path.join('results', stxl_model.checkpoint_name)
+        os.makedirs(result_dir, exist_ok=True)
 
-    results = []
-    with mp.Pool() as pool:
-        with tqdm(total=len(index_list), desc="Progress", dynamic_ncols=True, position=0, leave=True) as pbar:
-            for result, progress_info in pool.imap(analyse_partial, index_list):
-                pbar.set_description(
-                    f"Times - Inference: {progress_info[0]}, Evaluation: {progress_info[1]} - {datetime.now() - start_time}")
-                results.append(result)
-                pbar.update(1)
-        # results = pool.map(analyse_partial, index_list)
-    print(f"Finished in {datetime.now() - start_time}.")
+        index_list = list(range(0, len(loader), 32))
+        analyse_partial = partial(analyse,
+                                  dataloader=loader,
+                                  model=stxl_model,
+                                  gpu_lock=gpu_lock
+                                  )
+        start_time = datetime.now()
+
+        results = []
+        with mp.Pool() as pool:
+            with tqdm(total=len(index_list), desc="Progress", dynamic_ncols=True, position=0, leave=True) as pbar:
+                for result, progress_info in pool.imap(analyse_partial, index_list):
+                    pbar.set_description(
+                        f"Times - Inference: {progress_info[0]}, Evaluation: {progress_info[1]} - {datetime.now() - start_time}")
+                    results.append(result)
+                    pbar.update(1)
+            # results = pool.map(analyse_partial, index_list)
+        print(f"Finished in {datetime.now() - start_time}.")
 
     # save every precision/ recall of every sample and probability
     # e.g. a dict with probability as key and a list of precisions (by sample) as value
@@ -122,8 +132,14 @@ def main():
     """
 
 
-def analyse(sample_idx: int, dataloader: WaymoDataLoader):
+def analyse(sample_idx: int,
+            dataloader: WaymoDataLoader,
+            model: StixelModel,
+            gpu_lock: mp.Lock):
     sample = dataloader[sample_idx][0]
+    stxl_model = model
+    result_dir = os.path.join('results', stxl_model.checkpoint_name)
+    os.makedirs(result_dir, exist_ok=True)
     result_list = {}
     times = [[], []]
     if config["device"] == "gpu":
@@ -134,7 +150,10 @@ def analyse(sample_idx: int, dataloader: WaymoDataLoader):
     for probability in np.arange(0.0, 1.0, 0.05):
         # Inference a Stixel World
         start_inf = datetime.now()
-        stxl_wrld = stxl_model.inference(sample.image, probability=probability, calib=sample.calib)
+        with gpu_lock:
+            stxl_infer = stxl_model.inference(sample.image)
+            torch.cuda.empty_cache()
+        stxl_wrld = stxl_model.revert(stxl_infer, probability=probability, calib=sample.calib)
         times[0].append(datetime.now() - start_inf)
         # if len(stxl_wrld.stixel) > 2000:
         #     continue

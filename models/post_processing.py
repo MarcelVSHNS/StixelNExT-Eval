@@ -17,32 +17,26 @@ def revert_class(prediction: torch.Tensor,
     d_scale = d_scale * 0.1
     pred_np = prediction.numpy()
     stxl_wrld = stx.StixelWorld()
-    stxl_wrld.context.calibration = calib
-    columns = rearrange(pred_np, "a n u -> u n a")
-    for u in range(len(columns)):
-        # print(f"Col1: {column.shape}")
-        for n in range(len(columns[u])):
-            # print(f"candidate1: {candidate.shape}")
-            if four_attr:
-                if columns[u][n][3] >= prob:
-                    stxl = stx.Stixel()
-                    stxl.u = int(u * u_scale)
-                    stxl.vT = int(columns[u][n][1] * img_height)
-                    stxl.vB = int(columns[u][n][0] * img_height)
-                    stxl.d = columns[u][n][2] * d_scale + anchors[f'{u}'][n]
-                    stxl.confidence = columns[u][n][3]
-                    stxl.width = u_scale
-                    stxl_wrld.stixel.append(stxl)
-            else:
-                if columns[u][n][2] >= prob:
-                    stxl = stx.Stixel()
-                    stxl.u = int(u * u_scale)
-                    stxl.vT = int(columns[u][n][1] * img_height + 1)
-                    stxl.vB = int(columns[u][n][0] * img_height + 1)
-                    stxl.d = anchors[f'{u}'][n]
-                    stxl.confidence = columns[u][n][2]
-                    stxl.width = u_scale
-                    stxl_wrld.stixel.append(stxl)
+    stxl_wrld.context.calibration.K.extend(calib.K)
+    stxl_wrld.context.calibration.T.extend(calib.T)
+    # attributes, n-candidates, column u
+    pred_np = rearrange(pred_np, "a n u -> u n a")
+    # Filter the columns based on the mask
+    mask = pred_np[:, :, 2] >= prob
+    filtered_prediction = pred_np[mask]
+    mask_tensor = torch.from_numpy(mask)
+    u_indices, n_indices = torch.where(mask_tensor)
+
+    for i, (u, n) in enumerate(zip(u_indices, n_indices)):
+        stxl = stx.Stixel()
+        stxl.u = int(u * u_scale)
+        stxl.vT = int(filtered_prediction[i][1] * img_height + 1)
+        stxl.vB = int(filtered_prediction[i][0] * img_height + 1)
+        stxl.d = anchors[f'{u.item()}'][n.item()]
+        stxl.confidence = filtered_prediction[i][2]
+        stxl.width = u_scale
+        stxl_wrld.stixel.append(stxl)
+
     return stxl_wrld
 
 
