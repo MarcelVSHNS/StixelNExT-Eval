@@ -89,6 +89,7 @@ def evaluate_sample_3dbbox(stx_wrld: stx.StixelWorld, bboxes, iou_thres: int = 0
         stixel_pt_list.append(stixel_coord)
         colors_list.append(colors)
 
+    # TODO add prec/ recall for different range categories
     num_bboxes_without_stx = 0
     for bbox in bbox_dict.values():
         # and bbox['in_camera'] is True and bbox['has_lidar_pts'] is True
