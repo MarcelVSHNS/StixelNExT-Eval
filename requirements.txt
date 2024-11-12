@@ -10,6 +10,6 @@ tensorflow-cpu==2.12.0
 waymo-open-dataset-tf-2-12-0
 pillow
 torchinfo
-wandb
+#wandb
 open3d
-opencv-python
+
