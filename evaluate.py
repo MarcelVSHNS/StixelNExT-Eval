@@ -31,7 +31,7 @@ def main():
     # create logger
     logger = wandb.init(project="StixelNExT-Pro",
                         job_type="analysis",
-                        tags=["analysis"]
+                        tags=["evaluation"]
                         )
     artifact = logger.use_artifact(f"{config['artifact']}", type='model')
     # create model
@@ -81,18 +81,26 @@ def main():
             "Precision": result['precision'],
             "Recall": result['recall'],
             "F1_score": result['F1-Score'],
-            "Probability": result['probability']
+            "Probability": result['probability'],
+            "Precision_25": result['precision_25'],
+            "Recall_25": result['recall_25'],
+            "Precision_50": result['precision_50'],
+            "Recall_50": result['recall_50']
         })
+
     # create figure: Precision/ Recall
     plt.figure()
     plt.plot(recalls, precisions, label='NN', marker='o', color='turquoise')
     plt.plot(1.155, 0.974, label='GT', marker='x', color='fuchsia')
     plt.xlabel('Probability')
     plt.ylabel('Score')
-    name = f"{loader.name}-{config['results_name']} {stxl_model.checkpoint_name}"
+    name = f"{loader.name}-{config['results_name']}_{stxl_model.checkpoint_name}"
     plt.title(name)
     plt.legend()
     plt.savefig(os.path.join(result_dir, name + '.png'))
+    df = pd.DataFrame(results)
+    df.to_csv(name + ".csv", index=False)
+
     f1_prec = np.mean(precisions)
     f1_recall = np.mean(recalls)
     f1_score = calculate_f1(precision=f1_prec, recall=f1_recall)
@@ -105,7 +113,9 @@ def evaluate(probability: float,
              model: StixelModel,
              gpu_lock: mp.Lock
              ):
-    probab_result = {'Stixel-Score': np.array([]), 'BBox-Score': np.array([])}
+    probab_result = {'Stixel-Score': np.array([]), 'BBox-Score': np.array([]),
+                     'Stixel-Score_25': np.array([]), 'BBox-Score_25': np.array([]),
+                     'Stixel-Score_50': np.array([]), 'BBox-Score_50': np.array([])}
     sample_results = {}
     stxl_model = model
     result_dir = os.path.join('results', stxl_model.checkpoint_name)
@@ -123,8 +133,6 @@ def evaluate(probability: float,
                 stxl_infer = stxl_model.inference(sample.image)
                 torch.cuda.empty_cache()
             stxl_wrld = stxl_model.revert(stxl_infer, probability=probability, calib=sample.calib)
-            if len(stxl_wrld.stixel) > config['stx_dropout_threshold'] and config['stx_dropout']:
-                continue
             times[0].append(datetime.now() - start_inf)
             # Apply the evaluation
             start_eval = datetime.now()
@@ -133,6 +141,10 @@ def evaluate(probability: float,
             # print(f"Evaluation: {datetime.now() - start_eval}")
             probab_result['Stixel-Score'] = np.append(probab_result['Stixel-Score'], results['Stixel-Score'])
             probab_result['BBox-Score'] = np.append(probab_result['BBox-Score'], results['BBox-Score'])
+            probab_result['Stixel-Score_25'] = np.append(probab_result['Stixel-Score_25'], results['Stixel-Score_25'])
+            probab_result['BBox-Score_25'] = np.append(probab_result['BBox-Score_25'], results['BBox-Score_25'])
+            probab_result['Stixel-Score_50'] = np.append(probab_result['Stixel-Score_50'], results['Stixel-Score_50'])
+            probab_result['BBox-Score_50'] = np.append(probab_result['BBox-Score_50'], results['BBox-Score_50'])
             sample_results[sample.name] = results
             sample_time = datetime.now() - start_time
             results_short = results.copy()
@@ -145,6 +157,10 @@ def evaluate(probability: float,
         index += 1
     probab_score = np.mean(probab_result['Stixel-Score'])
     probab_bbox_score = np.mean(probab_result['BBox-Score'])
+    probab_score_25 = np.mean(probab_result['Stixel-Score_25'])
+    probab_bbox_score_25 = np.mean(probab_result['BBox-Score_25'])
+    probab_score_50 = np.mean(probab_result['Stixel-Score_50'])
+    probab_bbox_score_50 = np.mean(probab_result['BBox-Score_50'])
 
     df = pd.DataFrame.from_dict(sample_results, orient='index')
     df.index.name = 'Sample_ID'
@@ -161,7 +177,11 @@ def evaluate(probability: float,
     return {"probability": probability,
             "precision": probab_score,
             "recall": probab_bbox_score,
-            "F1-Score": f1_score}, average_times
+            "F1-Score": f1_score,
+            "precision_25": probab_score_25,
+            "recall_25": probab_bbox_score_25,
+            "precision_50": probab_score_50,
+            "recall_50": probab_bbox_score_50}, average_times
 
 
 def calculate_f1(precision: float, recall: float):

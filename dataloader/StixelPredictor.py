@@ -3,9 +3,10 @@ import importlib
 import os
 import os.path
 from collections import OrderedDict
-from typing import Optional
+from typing import Optional, Tuple
 
 import numpy as np
+import yaml
 import pandas as pd
 import stixel as stx
 import torch
@@ -27,7 +28,9 @@ def download_artifact_files(wandb_artifact: wandb.Artifact):
 
 
 class StixelModel:
-    def __init__(self, artifact: Optional[wandb.Artifact] = None, device: torch.device = torch.device('cpu')):
+    def __init__(self,
+                 artifact: Optional[wandb.Artifact] = None,
+                 device: torch.device = torch.device('cpu')):
         # load configuration and model
         if artifact is None:
             self._load_from_config()
@@ -46,7 +49,7 @@ class StixelModel:
         # print("Loaded checkpoint '{}'".format(self.checkpoint_name))
         self.model.eval()
         # Depth Anchors and revert function
-        self.depth_anchors = self._create_depth_bins(5, 69, 64)
+        self.depth_anchors = self._create_depth_bins_linear((5, 69, 64))
         if self.model_cfg['mode'] == "segmentation":
             from models import revert_segm as revert_fn
         elif self.model_cfg['mode'] == "classification":
@@ -72,8 +75,26 @@ class StixelModel:
         return stxl_wrld
 
     @staticmethod
-    def _create_depth_bins(start=5, end=55, num_bins=192):
+    def _create_depth_bins_linear(cfg: Tuple[int, int, int]):
+        start, end, num_bins = cfg
         bin_vals = np.linspace(start, end, num_bins)
+        bin_mtx = np.tile(bin_vals, (240, 1))
+        df = pd.DataFrame(bin_mtx)
+        df = df.T
+        df.columns = [str(i) for i in range(240)]
+        return df
+
+    @staticmethod
+    def _create_depth_bins(cfg: Tuple[int, int, int]):
+        start, end, num_bins = cfg
+        min_value = 0
+        max_value = np.pi / 3.4  # 2.4
+
+        linear_space = np.linspace(min_value, max_value, num_bins)
+        tangent_space = np.tan(linear_space)
+        bin_vals = start + (tangent_space - tangent_space.min()) / (tangent_space.max() - tangent_space.min()) * (
+                    end - start)
+
         bin_mtx = np.tile(bin_vals, (240, 1))
         df = pd.DataFrame(bin_mtx)
         df = df.T
@@ -88,8 +109,10 @@ class StixelModel:
                           "i_attributes": 3,
                           "n_bins": 64,
                           "mode": "classification"}
-        self.checkpoint_name = "StixelNExT-Pro_woven-wildflower-294_29"
-        self.chckpt_filename = "models/chckpts/StixelNExT-Pro_woven-wildflower-294_29.pth"
+        with open('config.yaml') as yaml_file:
+            config = yaml.load(yaml_file, Loader=yaml.FullLoader)
+        self.checkpoint_name = config["checkpoint_name"]
+        self.chckpt_filename = f"models/chckpts/{self.checkpoint_name}.pth"
         self.checkpoint_name = os.path.basename(os.path.splitext(self.chckpt_filename)[0])
         self.model, _ = get_model(config=self.model_cfg)
 
@@ -100,7 +123,7 @@ class StixelModel:
         module_name = relative_import_path.replace('/', '.').replace('.py', '')
         module = importlib.import_module(module_name)
         self.checkpoint_name = os.path.basename(os.path.splitext(self.chckpt_filename)[0])
-        self.model, _ = module.get_model(config=self.model_cfg)
+        self.model, _ = module.convnext_stixel(config=self.model_cfg)
 
     def info(self):
         summary(self.model, (1, 3, 1280, 1920), device=torch.device('cpu'))

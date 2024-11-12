@@ -66,23 +66,41 @@ def _check_if_stixel_in_bboxes(point_cloud, bboxes, threshold):
     return 0, colors, None
 
 
+def _get_stixel_range(stixel_coordinates: np.ndarray) -> float:
+    ranges = np.sqrt(np.sum(stixel_coordinates ** 2, axis=1))
+    mean_range = np.mean(ranges)
+    return mean_range
+
+def _get_bbox_range(bbox):
+    cx, cy, cz = bbox.box.center_x, bbox.box.center_y, bbox.box.center_z
+    range_distance = np.sqrt(cx ** 2 + cy ** 2 + cz ** 2)
+    return range_distance
+
+
+def _count_above_range_threshold(range_score, threshold=30):
+    filtered_points = [(range_val, result) for range_val, result in range_score if range_val < threshold]
+    count_above_threshold = len(filtered_points)
+    result_sum = sum(result for _, result in filtered_points)
+    return count_above_threshold, result_sum
+
 def evaluate_sample_3dbbox(stx_wrld: stx.StixelWorld, bboxes, iou_thres: int = 0.5):
     results = {}
     stixel_pt_list = []
     colors_list = []
     score = 0
-    count = 0
+    range_score = []
     bbox_dict = {}
     for bbox in bboxes:
         bbox_dict[bbox.id] = {'count': 0,
                               'in_camera': bbox.most_visible_camera_name == 'FRONT',
                               'has_lidar_pts': bbox.num_top_lidar_points_in_box > 2,
-                              'is_not_sign': bbox.type != 3}
+                              'is_not_sign': bbox.type != 3,
+                              'range': _get_bbox_range(bbox)}
     for stxl in stx_wrld.stixel:
-        count += 1
         stixel_coord = stx.utils.transformation.convert_stixel_to_points(stxl=stxl,
                                                                          calibration=stx_wrld.context.calibration)
         result, colors, idx = _check_if_stixel_in_bboxes(stixel_coord, bboxes, threshold=iou_thres)
+        range_score.append((_get_stixel_range(stixel_coord), result))
         if idx is not None:
             bbox_dict[idx]['count'] += 1
         score += result
@@ -96,12 +114,30 @@ def evaluate_sample_3dbbox(stx_wrld: stx.StixelWorld, bboxes, iou_thres: int = 0
         if bbox['count'] == 0:
             # count only if the bbox is in the fov of the camera and there are lidar points in the box, else its optional
             num_bboxes_without_stx += 1
-    bbox_count_relevant = 0
+    bbox_count_relevant = []
     for bbox in bbox_dict.values():
         # bbox['in_camera'] is True
         if bbox['in_camera'] and bbox['has_lidar_pts'] and bbox['is_not_sign']:
-            bbox_count_relevant += 1
+            bbox_count_relevant.append(bbox)
     bbox_score = len(bbox_dict) - num_bboxes_without_stx
+
+    for range in [25, 50]:
+        stixel_count, score_range = _count_above_range_threshold(range_score, threshold=range)
+        bbox_count_relevant_range = 0
+        bbox_score_range = 0
+        for bbox in bbox_count_relevant:
+            if bbox['range'] < range:
+                bbox_count_relevant_range += 1
+                if bbox['count'] > 0:
+                    bbox_score_range += 1
+        if stixel_count != 0:
+            results[f'Stixel-Score_{range}'] = score_range / stixel_count
+        else:
+            results[f'Stixel-Score_{range}'] = 1.0
+        if bbox_count_relevant_range != 0:
+            results[f'BBox-Score_{range}'] = bbox_score_range / bbox_count_relevant_range
+        else:
+            results[f'BBox-Score_{range}'] = 1.0
 
     results['Stixel'] = len(stixel_pt_list)
     results['Points'] = score
@@ -110,12 +146,12 @@ def evaluate_sample_3dbbox(stx_wrld: stx.StixelWorld, bboxes, iou_thres: int = 0
     else:
         # if there is no stixel, the prediction from pov-stixel is 100 % correct, no incorrect prediction
         results['Stixel-Score'] = 1.0
-    if bbox_count_relevant != 0:
-        results['BBox-Score'] = bbox_score / bbox_count_relevant
+    if len(bbox_count_relevant) != 0:
+        results['BBox-Score'] = bbox_score / len(bbox_count_relevant)
     else:
         results['BBox-Score'] = 1.0
     results['num_Bbox'] = len(bbox_dict)
-    results['num_relevant_Bbox'] = bbox_count_relevant
+    results['num_relevant_Bbox'] = len(bbox_count_relevant)
     results['bbox_points'] = bbox_score
     results['bbox_dist'] = bbox_dict
     return results, stixel_pt_list, colors_list

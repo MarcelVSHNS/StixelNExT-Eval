@@ -5,6 +5,7 @@ from datetime import datetime
 
 import stixel as stx
 import yaml
+import torch
 
 from dataloader import WaymoDataLoader, StixelModel
 from metric import evaluate_sample_3dbbox
@@ -22,14 +23,18 @@ def main():
     loader = WaymoDataLoader(data_dir=config["metric_data_path"],
                              first_only=True)
     # model
-    stxl_model = StixelModel()
+    if config["device"] == "gpu":
+        dev = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    else:
+        dev = torch.device('cpu')
+    stxl_model = StixelModel(device=dev)
     stxl_model.info()
 
     # local results directory
     result_dir = os.path.join('sample_results', stxl_model.checkpoint_name)
     os.makedirs(result_dir, exist_ok=True)
     sample = loader[31][0]
-    probability = 0.55
+    probability = config["explore_thres"]
 
     # Inference a Stixel World
     start_time = datetime.now()

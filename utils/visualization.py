@@ -47,6 +47,6 @@ def _get_bboxes_in_shape(bboxes):
 def draw_stixel_and_bboxes(stixel_pts, colors, bboxes):
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(np.vstack(stixel_pts))
-    pcd.colors = o3d.utility.Vector3dVector(np.array(colors))
+    pcd.colors = o3d.utility.Vector3dVector(np.vstack(colors))
     bounding_boxes = _get_bboxes_in_shape(bboxes)
     o3d.visualization.draw_geometries([pcd] + bounding_boxes)
