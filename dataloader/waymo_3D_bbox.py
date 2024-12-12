@@ -6,6 +6,7 @@ import stixel as stx
 import tensorflow as tf
 from PIL import Image
 from waymo_open_dataset import dataset_pb2 as open_dataset
+from waymo_open_dataset.utils.camera_segmentation_utils import decode_single_panoptic_label_from_proto, decode_semantic_and_instance_labels_from_panoptic_label
 
 
 def cartesian_to_spherical(x, y, z):
@@ -41,13 +42,23 @@ def filter_bboxes_by_hfov(bboxes, hfov, fov_margin=8):
 
 
 class WaymoData:
-    def __init__(self, tf_frame, name: str, cam_idx: int = 0):
+    def __init__(self, tf_frame, name: str, cam_idx: int = 0, panoptics: bool = False):
         # front = 0, front_left = 1, side_left = 2, front_right = 3, side_right = 4
         self.frame: open_dataset.Frame = tf_frame
         self.cam_idx: int = cam_idx
         self.name = name
         self.bboxes = filter_bboxes_by_hfov(tf_frame.laser_labels, np.deg2rad(50.4))
         img = sorted(tf_frame.images, key=lambda i: i.name)[cam_idx]
+        self.panoptics = panoptics
+        if self.panoptics:
+            panoptic_label_front = decode_single_panoptic_label_from_proto(segmentation_proto=img.camera_segmentation_label)
+            self.semantic_label, self.instance_label = decode_semantic_and_instance_labels_from_panoptic_label(
+                panoptic_label=panoptic_label_front,
+                panoptic_label_divisor=img.camera_segmentation_label.panoptic_label_divisor)
+            self.semantic_label = self.semantic_label.squeeze()
+            self.instance_label = self.instance_label.squeeze()
+        else:
+            self.semantic_label, self.instance_label = (None, None)
         self.image = Image.fromarray(tf.image.decode_jpeg(img.image).numpy())
         front_cam_calib = sorted(self.frame.context.camera_calibrations, key=lambda i: i.name)[0]
         K = self._get_camera_matrix(front_cam_calib.intrinsic)
@@ -90,11 +101,13 @@ class WaymoDataLoader:
         waymo_data_chunk = []
         for frame_num, tf_frame in frames.items():
             # reduce the number of samples by 2
-            if frame_num % 2 == 0:
+            panoptics = True if tf_frame.images[0].camera_segmentation_label.panoptic_label else False
+            if panoptics or frame_num % 2 == 0:
                 name: str = f"{tf_frame.context.name}_{frame_num}_{open_dataset.CameraName.Name.Name(self.cam_idx + 1)}"
                 waymo_data_chunk.append(WaymoData(tf_frame=tf_frame,
                                                   name=name,
-                                                  cam_idx=self.cam_idx))
+                                                  cam_idx=self.cam_idx,
+                                                  panoptics=panoptics))
             if len(waymo_data_chunk) > 0 and self.first_only:
                 break
         return waymo_data_chunk

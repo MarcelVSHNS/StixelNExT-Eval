@@ -1,4 +1,6 @@
 """ Evaluate, model + weights
+Validation 385 panoptic frames.
+Validation 3151 validation frames.
 """
 import os.path
 from datetime import datetime, timedelta
@@ -14,7 +16,7 @@ from tqdm import tqdm
 
 import wandb
 from dataloader import WaymoDataLoader, StixelModel
-from metric import evaluate_sample_3dbbox
+from metric import evaluate_sample_3dbbox, evaluate_sample_segmentation
 
 overall_start_time = datetime.now()
 os.environ["WANDB_REPORT_API_ENABLE_V2"] = "True"
@@ -41,7 +43,7 @@ def main():
         dev = torch.device('cpu')
 
     with mp.Manager() as manager:
-        stxl_model = StixelModel(device=dev)
+        stxl_model = StixelModel(device=dev, n_cand=config["n_cand"]) # artifact=artifact
         stxl_model.model.share_memory()
         stxl_model.info()
         gpu_lock = manager.Lock()
@@ -82,10 +84,11 @@ def main():
             "Recall": result['recall'],
             "F1_score": result['F1-Score'],
             "Probability": result['probability'],
-            "Precision_25": result['precision_25'],
-            "Recall_25": result['recall_25'],
+            "Precision_30": result['precision_30'],
+            "Recall_30": result['recall_30'],
             "Precision_50": result['precision_50'],
-            "Recall_50": result['recall_50']
+            "Recall_50": result['recall_50'],
+            "Segmentation_score": result['Segmentation-Score']
         })
 
     # create figure: Precision/ Recall
@@ -114,8 +117,9 @@ def evaluate(probability: float,
              gpu_lock: mp.Lock
              ):
     probab_result = {'Stixel-Score': np.array([]), 'BBox-Score': np.array([]),
-                     'Stixel-Score_25': np.array([]), 'BBox-Score_25': np.array([]),
-                     'Stixel-Score_50': np.array([]), 'BBox-Score_50': np.array([])}
+                     'Stixel-Score_30': np.array([]), 'BBox-Score_30': np.array([]),
+                     'Stixel-Score_50': np.array([]), 'BBox-Score_50': np.array([]),
+                     'Segmentation-Score': np.array([])}
     sample_results = {}
     stxl_model = model
     result_dir = os.path.join('results', stxl_model.checkpoint_name)
@@ -137,14 +141,18 @@ def evaluate(probability: float,
             # Apply the evaluation
             start_eval = datetime.now()
             results, stixel_pts, stixel_colors = evaluate_sample_3dbbox(stxl_wrld, sample.bboxes)
+            if sample.panoptics:
+                results["Segmentation-Score"] = evaluate_sample_segmentation(stxl_wrld, sample.semantic_label)
             times[1].append(datetime.now() - start_eval)
             # print(f"Evaluation: {datetime.now() - start_eval}")
             probab_result['Stixel-Score'] = np.append(probab_result['Stixel-Score'], results['Stixel-Score'])
             probab_result['BBox-Score'] = np.append(probab_result['BBox-Score'], results['BBox-Score'])
-            probab_result['Stixel-Score_25'] = np.append(probab_result['Stixel-Score_25'], results['Stixel-Score_25'])
-            probab_result['BBox-Score_25'] = np.append(probab_result['BBox-Score_25'], results['BBox-Score_25'])
+            probab_result['Stixel-Score_30'] = np.append(probab_result['Stixel-Score_30'], results['Stixel-Score_30'])
+            probab_result['BBox-Score_30'] = np.append(probab_result['BBox-Score_30'], results['BBox-Score_30'])
             probab_result['Stixel-Score_50'] = np.append(probab_result['Stixel-Score_50'], results['Stixel-Score_50'])
             probab_result['BBox-Score_50'] = np.append(probab_result['BBox-Score_50'], results['BBox-Score_50'])
+            if sample.panoptics:
+                probab_result['Segmentation-Score'] = np.append(probab_result['Segmentation-Score'], results['Segmentation-Score'])
             sample_results[sample.name] = results
             sample_time = datetime.now() - start_time
             results_short = results.copy()
@@ -157,15 +165,16 @@ def evaluate(probability: float,
         index += 1
     probab_score = np.mean(probab_result['Stixel-Score'])
     probab_bbox_score = np.mean(probab_result['BBox-Score'])
-    probab_score_25 = np.mean(probab_result['Stixel-Score_25'])
-    probab_bbox_score_25 = np.mean(probab_result['BBox-Score_25'])
+    probab_score_30 = np.mean(probab_result['Stixel-Score_30'])
+    probab_bbox_score_30 = np.mean(probab_result['BBox-Score_30'])
     probab_score_50 = np.mean(probab_result['Stixel-Score_50'])
     probab_bbox_score_50 = np.mean(probab_result['BBox-Score_50'])
+    probab_segmentation_score = np.mean(probab_result['Segmentation-Score'])
 
     df = pd.DataFrame.from_dict(sample_results, orient='index')
     df.index.name = 'Sample_ID'
     df.to_csv(os.path.join(result_dir,
-                           f"{dataloader.name}-{config['results_name']}_PROB-{probability}_StixelScore-{probab_score}_bboxScore-{probab_bbox_score}.csv"))
+                           f"{dataloader.name}-{config['results_name']}_PROB-{probability}_StixelScore-{probab_score}_bboxScore-{probab_bbox_score}_segmentationScore-{probab_segmentation_score}.csv"))
     # print(f"Finished probability: {probability} with a Stixel-Score of {probab_score} % and a BBox-Score of {probab_bbox_score} % over {len(sample_results)} samples.")
     # wandb log
     f1_score = calculate_f1(precision=probab_score, recall=probab_bbox_score)
@@ -178,10 +187,11 @@ def evaluate(probability: float,
             "precision": probab_score,
             "recall": probab_bbox_score,
             "F1-Score": f1_score,
-            "precision_25": probab_score_25,
-            "recall_25": probab_bbox_score_25,
+            "precision_30": probab_score_30,
+            "recall_30": probab_bbox_score_30,
             "precision_50": probab_score_50,
-            "recall_50": probab_bbox_score_50}, average_times
+            "recall_50": probab_bbox_score_50,
+            "Segmentation-Score": probab_segmentation_score}, average_times
 
 
 def calculate_f1(precision: float, recall: float):

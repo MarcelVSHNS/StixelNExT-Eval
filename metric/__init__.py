@@ -1,1 +1,2 @@
 from .bbox_iou import evaluate_sample_3dbbox
+from .segmentation_iou import evaluate_sample_segmentation

@@ -30,8 +30,10 @@ def download_artifact_files(wandb_artifact: wandb.Artifact):
 class StixelModel:
     def __init__(self,
                  artifact: Optional[wandb.Artifact] = None,
-                 device: torch.device = torch.device('cpu')):
+                 device: torch.device = torch.device('cpu'),
+                 n_cand=32):
         # load configuration and model
+        self.n_cand = n_cand
         if artifact is None:
             self._load_from_config()
         else:
@@ -49,7 +51,8 @@ class StixelModel:
         # print("Loaded checkpoint '{}'".format(self.checkpoint_name))
         self.model.eval()
         # Depth Anchors and revert function
-        self.depth_anchors = self._create_depth_bins_linear((5, 69, 64))
+        self.depth_anchors = self._create_depth_bins_linear((4, 66, self.n_cand))
+        print(self.depth_anchors)
         if self.model_cfg['mode'] == "segmentation":
             from models import revert_segm as revert_fn
         elif self.model_cfg['mode'] == "classification":
@@ -105,16 +108,16 @@ class StixelModel:
         self.model_cfg = {"C": 96,
                           "B": [3, 3, 9, 3],
                           "stem_features": 64,
-                          "n_candidates": 64,
-                          "i_attributes": 3,
-                          "n_bins": 64,
+                          "n_cand": 32,
+                          "i_attr": 3,
+                          "n_bins": 32,
                           "mode": "classification"}
         with open('config.yaml') as yaml_file:
             config = yaml.load(yaml_file, Loader=yaml.FullLoader)
         self.checkpoint_name = config["checkpoint_name"]
         self.chckpt_filename = f"models/chckpts/{self.checkpoint_name}.pth"
         self.checkpoint_name = os.path.basename(os.path.splitext(self.chckpt_filename)[0])
-        self.model, _ = get_model(config=self.model_cfg)
+        self.model, _ = get_model(n_candidates=self.model_cfg["n_cand"])
 
     def _load_from_artifact(self, artifact: wandb.Artifact):
         self.model_cfg = artifact.metadata
@@ -123,7 +126,7 @@ class StixelModel:
         module_name = relative_import_path.replace('/', '.').replace('.py', '')
         module = importlib.import_module(module_name)
         self.checkpoint_name = os.path.basename(os.path.splitext(self.chckpt_filename)[0])
-        self.model, _ = module.convnext_stixel(config=self.model_cfg)
+        self.model, _ = module.shufflenet_stixel(n_candidates=self.model_cfg["n_cand"])
 
     def info(self):
         summary(self.model, (1, 3, 1280, 1920), device=torch.device('cpu'))

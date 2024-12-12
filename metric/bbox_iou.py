@@ -100,7 +100,8 @@ def evaluate_sample_3dbbox(stx_wrld: stx.StixelWorld, bboxes, iou_thres: int = 0
         stixel_coord = stx.utils.transformation.convert_stixel_to_points(stxl=stxl,
                                                                          calibration=stx_wrld.context.calibration)
         result, colors, idx = _check_if_stixel_in_bboxes(stixel_coord, bboxes, threshold=iou_thres)
-        range_score.append((_get_stixel_range(stixel_coord), result))
+        if not stixel_coord.size == 0:
+            range_score.append((_get_stixel_range(stixel_coord), result))
         if idx is not None:
             bbox_dict[idx]['count'] += 1
         score += result
@@ -121,7 +122,7 @@ def evaluate_sample_3dbbox(stx_wrld: stx.StixelWorld, bboxes, iou_thres: int = 0
             bbox_count_relevant.append(bbox)
     bbox_score = len(bbox_dict) - num_bboxes_without_stx
 
-    for range in [25, 50]:
+    for range in [30, 50]:
         stixel_count, score_range = _count_above_range_threshold(range_score, threshold=range)
         bbox_count_relevant_range = 0
         bbox_score_range = 0

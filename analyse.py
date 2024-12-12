@@ -16,7 +16,7 @@ from tqdm import tqdm
 
 import wandb
 from dataloader import WaymoDataLoader, StixelModel
-from metric import evaluate_sample_3dbbox
+from metric import evaluate_sample_3dbbox, evaluate_sample_segmentation
 
 with open('config.yaml') as yaml_file:
     config = yaml.load(yaml_file, Loader=yaml.FullLoader)
