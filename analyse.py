@@ -42,7 +42,7 @@ def main():
         dev = torch.device('cpu')
 
     with mp.Manager() as manager:
-        stxl_model = StixelModel(device=dev)
+        stxl_model = StixelModel(device=dev, n_cand=config["n_cand"])
         stxl_model.model.share_memory()
         stxl_model.info()
         gpu_lock = manager.Lock()
@@ -146,7 +146,7 @@ def analyse(sample_idx: int,
         dev = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     else:
         dev = torch.device('cpu')
-    stxl_model = StixelModel(device=dev)
+    stxl_model = StixelModel(device=dev, n_cand=config["n_cand"])
     for probability in np.arange(0.0, 1.0, 0.05):
         # Inference a Stixel World
         start_inf = datetime.now()

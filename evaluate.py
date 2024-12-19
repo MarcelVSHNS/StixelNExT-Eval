@@ -43,7 +43,7 @@ def main():
         dev = torch.device('cpu')
 
     with mp.Manager() as manager:
-        stxl_model = StixelModel(device=dev, n_cand=config["n_cand"]) # artifact=artifact
+        stxl_model = StixelModel(device=dev, n_cand=config["n_cand"], artifact=artifact) # artifact=artifact
         stxl_model.model.share_memory()
         stxl_model.info()
         gpu_lock = manager.Lock()

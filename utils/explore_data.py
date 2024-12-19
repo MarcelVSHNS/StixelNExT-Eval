@@ -50,7 +50,7 @@ def main():
     #     continue
     # print(f"Inference: {datetime.now() - start_inf}")
     # Apply the evaluation
-    results, stixel_pts, stixel_colors = evaluate_sample_3dbbox(stxl_wrld, sample.bboxes)
+    results, stixel_pts, stixel_colors = evaluate_sample_3dbbox(sample.bboxes, stx_wrld=stxl_wrld)
     prec = results["Stixel-Score"]
     recall = results["BBox-Score"]
     print(f"F1: {calculate_f1(prec, recall)} \t Precision: {prec} \t Recall: {recall}")

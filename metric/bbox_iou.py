@@ -1,3 +1,5 @@
+from typing import Optional
+
 import numpy as np
 import stixel as stx
 
@@ -66,6 +68,27 @@ def _check_if_stixel_in_bboxes(point_cloud, bboxes, threshold):
     return 0, colors, None
 
 
+def _convert_to_mmdet_bbox(bbox):
+    # TODO: convert bbox to CameraInstance3DBoxes (mmdet3d)
+    return 0, 1
+
+
+def calculate_mmdet_bbox_iou(box1, box2):
+    box1: CameraInstance3DBoxes = box1
+    box2: CameraInstance3DBoxes = box2
+    return CameraInstance3DBoxes.overlaps(box1, box2).numpy()[0][0]
+
+
+def _check_if_bbox_in_bboxes(sample_bbox, bboxes, threshold):
+    colors = None
+    for bbox in bboxes:
+        mmdet_bbox, idx = _convert_to_mmdet_bbox(bbox)
+        percentage_inside = calculate_mmdet_bbox_iou(sample_bbox, bbox)
+        if percentage_inside >= threshold:
+            return 1, colors, idx
+    return 0, colors, None
+
+
 def _get_stixel_range(stixel_coordinates: np.ndarray) -> float:
     ranges = np.sqrt(np.sum(stixel_coordinates ** 2, axis=1))
     mean_range = np.mean(ranges)
@@ -83,32 +106,44 @@ def _count_above_range_threshold(range_score, threshold=30):
     result_sum = sum(result for _, result in filtered_points)
     return count_above_threshold, result_sum
 
-def evaluate_sample_3dbbox(stx_wrld: stx.StixelWorld, bboxes, iou_thres: int = 0.5):
+
+def evaluate_sample_3dbbox(gt_bboxes, stx_wrld: Optional[stx.StixelWorld] = None, pred_bboxes = None, iou_thres: int = 0.5, bbox_mode: bool = False):
     results = {}
     stixel_pt_list = []
     colors_list = []
     score = 0
     range_score = []
     bbox_dict = {}
-    for bbox in bboxes:
+    for bbox in gt_bboxes:
         bbox_dict[bbox.id] = {'count': 0,
                               'in_camera': bbox.most_visible_camera_name == 'FRONT',
                               'has_lidar_pts': bbox.num_top_lidar_points_in_box > 2,
                               'is_not_sign': bbox.type != 3,
                               'range': _get_bbox_range(bbox)}
-    for stxl in stx_wrld.stixel:
-        stixel_coord = stx.utils.transformation.convert_stixel_to_points(stxl=stxl,
-                                                                         calibration=stx_wrld.context.calibration)
-        result, colors, idx = _check_if_stixel_in_bboxes(stixel_coord, bboxes, threshold=iou_thres)
-        if not stixel_coord.size == 0:
-            range_score.append((_get_stixel_range(stixel_coord), result))
-        if idx is not None:
-            bbox_dict[idx]['count'] += 1
-        score += result
-        stixel_pt_list.append(stixel_coord)
-        colors_list.append(colors)
+    if bbox_mode:
+        assert pred_bboxes is not None
+        for p_bbox in pred_bboxes:
+            result, colors, idx = _check_if_bbox_in_bboxes(p_bbox, gt_bboxes, iou_thres)
+            if idx is not None:
+                bbox_dict[idx]['count'] += 1
+            score += result
+            stixel_pt_list.append(p_bbox.corners)
+            colors_list.append(colors)
 
-    # TODO add prec/ recall for different range categories
+    else:
+        assert stx_wrld is not None
+        for stxl in stx_wrld.stixel:
+            stixel_coord = stx.utils.transformation.convert_stixel_to_points(stxl=stxl,
+                                                                             calibration=stx_wrld.context.calibration)
+            result, colors, idx = _check_if_stixel_in_bboxes(stixel_coord, gt_bboxes, threshold=iou_thres)
+            if not stixel_coord.size == 0:
+                range_score.append((_get_stixel_range(stixel_coord), result))
+            if idx is not None:
+                bbox_dict[idx]['count'] += 1
+            score += result
+            stixel_pt_list.append(stixel_coord)
+            colors_list.append(colors)
+
     num_bboxes_without_stx = 0
     for bbox in bbox_dict.values():
         # and bbox['in_camera'] is True and bbox['has_lidar_pts'] is True
