@@ -11,8 +11,12 @@ class PGDPredictor:
         self.model = init_model(self.cfg, chckpt_path, device='cuda:0')
         self.thres = thres
 
-    def predict(self, img_path, calib):
-        ann_file = self._get_ann_file(img_path, calib)
+    def predict(self, img, calib):
+        #K = np.hstack((calib, np.array([[0], [0], [0]])))
+        K = calib
+        img.save('sample.jpg')
+        img_path = 'sample.jpg'
+        ann_file = self._get_ann_file(img_path, K)
         results = inference_mono_3d_detector(
             self.model,
             imgs=[img_path],
@@ -20,7 +24,7 @@ class PGDPredictor:
             cam_type='CAM_FRONT'
         )
         # print(results[0])
-        return self._filter_boxes(results[0]).cpu().detach()
+        return (self._filter_boxes(results[0]).cpu().detach()).corners
 
     def _filter_boxes(self, result):
         mask = result.pred_instances_3d.scores_3d > self.thres

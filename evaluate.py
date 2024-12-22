@@ -15,7 +15,7 @@ import yaml
 from tqdm import tqdm
 
 import wandb
-from dataloader import WaymoDataLoader, StixelModel
+from dataloader import WaymoDataLoader, PGDPredictor
 from metric import evaluate_sample_3dbbox, evaluate_sample_segmentation
 
 overall_start_time = datetime.now()
@@ -35,27 +35,30 @@ def main():
                         job_type="analysis",
                         tags=["evaluation"]
                         )
-    artifact = logger.use_artifact(f"{config['artifact']}", type='model')
+    #artifact = logger.use_artifact(f"{config['artifact']}", type='model')
+    config_path = "models/pgd_r101_fpn_gn-head_dcn_8xb3-2x_waymoD3-fov-mono3d.py"
+    chckpt_path = "models/chckpts/epoch_20.pth"
     # create model
     if config["device"] == "gpu":
         dev = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     else:
         dev = torch.device('cpu')
 
+    """""
     with mp.Manager() as manager:
-        stxl_model = StixelModel(device=dev, n_cand=config["n_cand"], artifact=artifact) # artifact=artifact
-        stxl_model.model.share_memory()
-        stxl_model.info()
+        pgd_model = PGDPredictor(cfg_path=config_path, chckpt_path=chckpt_path, thres=0.3) # artifact=artifact
+        pgd_model.model.share_memory()
+        # pgd_model.info()
         gpu_lock = manager.Lock()
         # create results_folder
-        result_dir = os.path.join('results', stxl_model.checkpoint_name)
+        result_dir = os.path.join('results', 'pgd_baseline')
         os.makedirs(result_dir, exist_ok=True)
 
         # multiprocess every probability
         probabilities = np.arange(config["from"], config["to"], config["in"])
         evaluate_partial = partial(evaluate,
                                    dataloader=loader,
-                                   model=stxl_model,
+                                   model=pgd_model,
                                    gpu_lock=gpu_lock
                                    )
         start_time = datetime.now()
@@ -70,15 +73,18 @@ def main():
                     pbar.update(1)
             # results = pool.map(analyse_partial, index_list)
         print(f"Finished in {datetime.now() - start_time}.")
-
-    # organize results in dict
+    """
+    result_dir = os.path.join('results', 'pgd_baseline')
+    os.makedirs(result_dir, exist_ok=True)
+    probabs = np.arange(config["from"], config["to"], config["in"])
+    start_time = datetime.now()
+    results = []
     probabilities = []
     precisions = []
     recalls = []
-    for result in results:
-        probabilities.append(result['probability'])
-        precisions.append(result['precision'])
-        recalls.append(result['recall'])
+    for prob in probabs:
+        result, progress_info = evaluate(dataloader=loader, probability=prob)
+        results.append(result)
         logger.log({
             "Precision": result['precision'],
             "Recall": result['recall'],
@@ -90,6 +96,10 @@ def main():
             "Recall_50": result['recall_50'],
             "Segmentation_score": result['Segmentation-Score']
         })
+        probabilities.append(result['probability'])
+        precisions.append(result['precision'])
+        recalls.append(result['recall'])
+    print(f"Finished in {datetime.now() - start_time}.")
 
     # create figure: Precision/ Recall
     plt.figure()
@@ -97,7 +107,7 @@ def main():
     plt.plot(1.155, 0.974, label='GT', marker='x', color='fuchsia')
     plt.xlabel('Probability')
     plt.ylabel('Score')
-    name = f"{loader.name}-{config['results_name']}_{stxl_model.checkpoint_name}"
+    name = f"{loader.name}-{config['results_name']}_pgd-baseline"
     plt.title(name)
     plt.legend()
     plt.savefig(os.path.join(result_dir, name + '.png'))
@@ -112,17 +122,17 @@ def main():
 
 
 def evaluate(probability: float,
-             dataloader: WaymoDataLoader,
-             model: StixelModel,
-             gpu_lock: mp.Lock
+             dataloader: WaymoDataLoader
              ):
     probab_result = {'Stixel-Score': np.array([]), 'BBox-Score': np.array([]),
                      'Stixel-Score_30': np.array([]), 'BBox-Score_30': np.array([]),
                      'Stixel-Score_50': np.array([]), 'BBox-Score_50': np.array([]),
                      'Segmentation-Score': np.array([])}
     sample_results = {}
-    stxl_model = model
-    result_dir = os.path.join('results', stxl_model.checkpoint_name)
+    config_path = "models/pgd_r101_fpn_gn-head_dcn_8xb3-2x_waymoD3-fov-mono3d.py"
+    chckpt_path = "models/chckpts/epoch_20.pth"
+    stxl_model = PGDPredictor(cfg_path=config_path, chckpt_path=chckpt_path, thres=probability)
+    result_dir = os.path.join('results', 'pgd_baseline')
     os.makedirs(result_dir, exist_ok=True)
     times = [[], []]
     index = 1
@@ -133,16 +143,12 @@ def evaluate(probability: float,
             start_time = datetime.now()
             # Inference a Stixel World
             start_inf = datetime.now()
-            with gpu_lock:
-                stxl_infer = stxl_model.inference(sample.image)
-                torch.cuda.empty_cache()
-            stxl_wrld = stxl_model.revert(stxl_infer, probability=probability, calib=sample.calib)
+            bbox_infer = stxl_model.predict(sample.image, sample.k2)
+            torch.cuda.empty_cache()
             times[0].append(datetime.now() - start_inf)
             # Apply the evaluation
             start_eval = datetime.now()
-            results, stixel_pts, stixel_colors = evaluate_sample_3dbbox(stxl_wrld, sample.bboxes)
-            if sample.panoptics:
-                results["Segmentation-Score"] = evaluate_sample_segmentation(stxl_wrld, sample.semantic_label)
+            results, stixel_pts, stixel_colors = evaluate_sample_3dbbox(sample.bboxes, pred_bboxes=bbox_infer, trans_mtx= np.array(sample.calib.T).reshape(4, 4), bbox_mode=True)
             times[1].append(datetime.now() - start_eval)
             # print(f"Evaluation: {datetime.now() - start_eval}")
             probab_result['Stixel-Score'] = np.append(probab_result['Stixel-Score'], results['Stixel-Score'])
@@ -151,8 +157,6 @@ def evaluate(probability: float,
             probab_result['BBox-Score_30'] = np.append(probab_result['BBox-Score_30'], results['BBox-Score_30'])
             probab_result['Stixel-Score_50'] = np.append(probab_result['Stixel-Score_50'], results['Stixel-Score_50'])
             probab_result['BBox-Score_50'] = np.append(probab_result['BBox-Score_50'], results['BBox-Score_50'])
-            if sample.panoptics:
-                probab_result['Segmentation-Score'] = np.append(probab_result['Segmentation-Score'], results['Segmentation-Score'])
             sample_results[sample.name] = results
             sample_time = datetime.now() - start_time
             results_short = results.copy()

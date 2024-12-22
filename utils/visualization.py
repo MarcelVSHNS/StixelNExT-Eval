@@ -1,5 +1,6 @@
 import numpy as np
 import open3d as o3d
+import cv2
 
 
 def _get_bboxes_in_shape(bboxes):
@@ -50,3 +51,28 @@ def draw_stixel_and_bboxes(stixel_pts, colors, bboxes):
     pcd.colors = o3d.utility.Vector3dVector(np.vstack(colors))
     bounding_boxes = _get_bboxes_in_shape(bboxes)
     o3d.visualization.draw_geometries([pcd] + bounding_boxes)
+
+
+def draw_mmdet_bboxes_on_image(image, bboxes, calib, K):
+    corners_3d = bboxes.corners  # (N, 8, 3)
+    corners_3d_homogeneous = np.concatenate([corners_3d, np.ones((corners_3d.shape[0], 8, 1))],
+                                            axis=-1)
+
+    # Transformation matrix (T) from calibration
+    #T = np.array(calib.T).reshape(4, 4)
+    #K = np.hstack((np.array(calib.K).reshape(3,3), np.array([[0], [0], [0]])))
+    # Transform 3D points with the transformation matrix
+    #corners_3d_transformed = np.einsum('ij,nmj->nmi', T, corners_3d_homogeneous)
+    proj_points = []
+    for box in corners_3d_homogeneous:
+        box_2d = (K @ box.T).T
+        box_2d = box_2d[:, :2] / box_2d[:, 2:3]
+        proj_points.append(box_2d)
+
+    for box_2d in proj_points:
+        box_2d = box_2d.astype(int)
+        for start, end in [(0, 1), (1, 2), (2, 3), (3, 0),
+                           (4, 5), (5, 6), (6, 7), (7, 4),
+                           (0, 4), (1, 5), (2, 6), (3, 7)]:
+            cv2.line(image, tuple(box_2d[start]), tuple(box_2d[end]), color=(0, 255, 0), thickness=2)
+    return image

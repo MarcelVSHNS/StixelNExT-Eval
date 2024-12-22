@@ -61,7 +61,7 @@ class WaymoData:
             self.semantic_label, self.instance_label = (None, None)
         self.image = Image.fromarray(tf.image.decode_jpeg(img.image).numpy())
         front_cam_calib = sorted(self.frame.context.camera_calibrations, key=lambda i: i.name)[0]
-        K = self._get_camera_matrix(front_cam_calib.intrinsic)
+        K, self.k2 = self._get_camera_matrix(front_cam_calib.intrinsic)
         T = np.linalg.inv(np.array(front_cam_calib.extrinsic.transform).reshape(4, 4))
         self.calib: stx.stixel_world_pb2.CameraInfo = stx.stixel_world_pb2.CameraInfo()
         self.calib.T.extend(T.flatten().tolist())
@@ -80,10 +80,15 @@ class WaymoData:
             [f_u, 0, c_u, 0],
             [0, f_v, c_v, 0],
             [0, 0, 1, 0],
+        ])
+        K_waymo = np.array([
+            [f_u, 0, c_u, 0],
+            [0, f_v, c_v, 0],
+            [0, 0, 1, 0],
             [0, 0, 0, 1]
         ])
         camera_mtx = K_tmp @ waymo_cam_RT
-        return camera_mtx[:3, :3]
+        return camera_mtx[:3, :3], K_tmp
 
 
 class WaymoDataLoader:
