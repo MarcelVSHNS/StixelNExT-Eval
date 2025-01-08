@@ -36,7 +36,7 @@ def main():
     os.makedirs(result_dir, exist_ok=True)
     idx = random.randint(0, len(loader) - 1)
     print(f"random Idx: {idx}")
-    sample = loader[143][0] #31 for default sample
+    sample = loader[idx][0] #31 for default sample
     probability = config["explore_thres"]
 
     # Inference a Stixel World
@@ -57,18 +57,19 @@ def main():
     if sample.panoptics:
         segmentation_score, segmentation_img = evaluate_sample_segmentation(stxl_wrld, sample.semantic_label, image=sample.image.convert('L'))
         print(f"Segmentation mIoU: {segmentation_score}")
-        segmentation_img.show()
+        #segmentation_img.show()
 
     stxl_wrld = stx.add_image(stxl_wrld, sample.image)
-    sample.image.show()
+    stx.save(stxl_wrld)
+    #sample.image.show()
     print(results)
     # img = stx.draw_stixels_on_image(stxl_wrld)
     # img.show()
     if stixel_pts:
         stxl_wrld_clustered = stx.attach_dbscan_clustering(stxl_wrld, min_samples=1)
-        stxl_img = stx.draw_stixels_on_image(stxl_wrld_clustered, instances=True)
+        stxl_img = stx.draw_stixels_on_image(stxl_wrld_clustered)
         stxl_img.show()
-        draw_stixel_and_bboxes(stixel_pts, stixel_colors, sample.bboxes)
+        #draw_stixel_and_bboxes(stixel_pts, stixel_colors, sample.bboxes)
 
 
 def calculate_f1(precision: float, recall: float):

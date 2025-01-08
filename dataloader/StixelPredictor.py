@@ -31,7 +31,7 @@ class StixelModel:
     def __init__(self,
                  artifact: Optional[wandb.Artifact] = None,
                  device: torch.device = torch.device('cpu'),
-                 n_cand=32):
+                 n_cand=128):
         # load configuration and model
         self.n_cand = n_cand
         if artifact is None:
@@ -51,7 +51,7 @@ class StixelModel:
         # print("Loaded checkpoint '{}'".format(self.checkpoint_name))
         self.model.eval()
         # Depth Anchors and revert function
-        self.depth_anchors = self._create_depth_bins_linear((4, 66, self.n_cand))
+        self.depth_anchors = self._create_depth_bins_linear((5, 69, self.n_cand))
         print(self.depth_anchors)
         if self.model_cfg['mode'] == "segmentation":
             from models import revert_segm as revert_fn
@@ -91,7 +91,7 @@ class StixelModel:
     def _create_depth_bins(cfg: Tuple[int, int, int]):
         start, end, num_bins = cfg
         min_value = 0
-        max_value = np.pi / 3.4  # 2.4
+        max_value = np.pi / 2.72  # 2.4
 
         linear_space = np.linspace(min_value, max_value, num_bins)
         tangent_space = np.tan(linear_space)
@@ -108,7 +108,7 @@ class StixelModel:
         self.model_cfg = {"C": 96,
                           "B": [3, 3, 9, 3],
                           "stem_features": 64,
-                          "n_cand": 32,
+                          "n_cand": 64,
                           "i_attr": 3,
                           "n_bins": 32,
                           "mode": "classification"}
@@ -126,7 +126,7 @@ class StixelModel:
         module_name = relative_import_path.replace('/', '.').replace('.py', '')
         module = importlib.import_module(module_name)
         self.checkpoint_name = os.path.basename(os.path.splitext(self.chckpt_filename)[0])
-        self.model, _ = module.shufflenet_stixel(n_candidates=self.model_cfg["n_cand"])
+        self.model, _ = module.convnext_stixel(n_candidates=self.model_cfg["n_cand"])
 
     def info(self):
         summary(self.model, (1, 3, 1280, 1920), device=torch.device('cpu'))
